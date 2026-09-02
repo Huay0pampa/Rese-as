@@ -32,6 +32,20 @@ export function useFileUpload() {
 
       setState((prev) => ({ ...prev, status: 'validating', progress: 80 }));
 
+      // Missing required columns check
+      if (result.validation.missingColumns.length > 0) {
+        const missingList = result.validation.missingColumns.map((c) => `'${c}'`).join(', ');
+        const errorMessage = `Estructura no válida. Falta(n) la(s) columna(s) obligatoria(s): ${missingList}. Por favor verifica el encabezado de tu archivo Excel.`;
+
+        setState((prev) => ({
+          ...prev,
+          status: 'error',
+          progress: 0,
+          errorMessage,
+        }));
+        return result;
+      }
+
       if (!result.validation.isValid && result.validation.validRowsCount === 0) {
         const firstError = result.validation.errors[0]?.message || 'Error en la estructura del archivo.';
         setState((prev) => ({

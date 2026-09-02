@@ -45,8 +45,8 @@ c:\Users\Acer\Desktop\APP Veritrade\
     │   │   ├── Card.tsx            # Contenedor UI de cristal (Glassmorphism)
     │   │   └── Badge.tsx           # Etiqueta visual reutilizable
     │   ├── upload/
-    │   │   ├── FileUploader.tsx    # Zona Dropzone interactiva con barra de progreso
-    │   │   └── FileStatusCard.tsx  # Card con metadatos del archivo cargado
+    │   │   ├── FileUploader.tsx    # Zona Dropzone interactiva con barra de progreso y manejo de errores
+    │   │   └── FileStatusCard.tsx  # Card con metadatos del archivo cargado (registros, columnas, hoja)
     │   ├── dashboard/
     │   │   ├── DashboardShell.tsx  # Layout grid para el dashboard
     │   │   ├── EmptyState.tsx      # Estado inicial explicativo previo a la carga
@@ -59,11 +59,11 @@ c:\Users\Acer\Desktop\APP Veritrade\
     │   ├── constants/
     │   │   └── schema.ts           # Definición de las 8 columnas oficiales y tipos mime
     │   ├── excel/
-    │   │   └── parser.ts           # Lector modular de búferes Excel/CSV con SheetJS
+    │   │   └── parser.ts           # Lector modular de búferes Excel/CSV (extrae hoja, total columnas, columnas extra)
     │   ├── validation/
-    │   │   └── validator.ts        # Validador de esquema de columnas y obligatoriedad
+    │   │   └── validator.ts        # Validador de esquema de columnas y obligatoriedad (nombres exactos de columnas faltantes)
     │   ├── normalization/
-    │   │   └── normalizer.ts       # Normalizador de tipos (fechas ISO, números, textos)
+    │   │   └── normalizer.ts       # Normalizador de tipos (preserva columnas adicionales en extraFields)
     │   ├── processing/
     │   │   └── processor.ts        # Pipeline unificado (Parsing -> Validation -> Normalization)
     │   ├── analysis/
@@ -79,13 +79,13 @@ c:\Users\Acer\Desktop\APP Veritrade\
     │   ├── persistence-service.ts  # Servicio de persistencia en Supabase (Placeholder)
     │   └── analytics-service.ts    # Servicio de cálculo analítico
     ├── types/
-    │   ├── export-data.ts          # Interfaces de RawExportRecord, NormalizedExportRecord, FileMetadata
+    │   ├── export-data.ts          # Interfaces de RawExportRecord, NormalizedExportRecord, FileMetadata (hoja, columnas, extraFields)
     │   ├── schema.ts               # Interfaces de ColumnDefinition, ValidationResult, ValidationError
     │   ├── analysis.ts             # Interfaces de SummaryMetrics, Aggregations, AnalysisResult
     │   ├── filters.ts              # Interfaces de FilterOptions, ActiveFilters
     │   └── index.ts                # Archivo barril exportador de tipos
     ├── hooks/
-    │   ├── useFileUpload.ts        # Hook para gestionar la carga y progreso de archivos
+    │   ├── useFileUpload.ts        # Hook para gestionar la carga, progreso y errores detallados
     │   └── useExportData.ts        # Hook para el estado de datos normalizados y filtros
     └── utils/
         ├── formatters.ts           # Formateadores de moneda (USD FOB), fechas y números
@@ -109,44 +109,46 @@ La aplicación valida estrictamente la presencia de las siguientes 8 columnas of
 
 ---
 
-## 6. Funcionalidades Terminadas (PROMPT 01)
+## 6. Funcionalidades Terminadas
+
+### PROMPT 01 — Arquitectura Base
 - [x] **Arquitectura Base Modular**: Separación limpia de `components/`, `lib/`, `types/`, `hooks/`, `services/`, `utils/`.
 - [x] **Definición de Tipos TypeScript**: Tipado estricto para registros originales, registros normalizados, metadatos de archivo, resultados de validación, filtros y métricas.
-- [x] **Parser de Excel con SheetJS (`xlsx`)**: Carga y lectura de archivos `.xlsx`, `.xls` y `.csv` en memoria sin límite fijo de filas.
-- [x] **Motor de Validación de Esquema**: Verificación de presencia de las 8 columnas requeridas y detección de errores de formato por fila.
-- [x] **Normalizador de Datos**: Transformación limpia a estructuras tipadas `NormalizedExportRecord` (conversión de fechas a ISO, parseo numérico de FOB Tot y Qty).
-- [x] **Motor de Filtrado y Agregación**: Funciones `computeSummaryMetrics` y `extractFilterOptions` data-driven.
-- [x] **Preparación de Supabase**: Módulo `src/lib/supabase/client.ts` y `PersistenceService` configurados para integración sin errores de compilación cuando falten variables de entorno.
-- [x] **Preparación de Recharts**: Componente `ChartPlaceholder.tsx` integrado con contenedores responsivos de Recharts.
-- [x] **UI Profesional Responsive**: Interfaz oscura en Glassmorphism con Dropzone interactivo, indicadores de estado, resumen de KPIs y tabla preliminar.
-- [x] **Verificación y Compilación**: Proyecto compilando limpiamente con `npm run build`, `npm run lint` y `npx tsc --noEmit`.
+- [x] **Preparación de Supabase & Recharts**: Módulos y servicios desacoplados.
+
+### PROMPT 02 — Carga Dinámica de Excel
+- [x] **Soporte de Formatos**: Carga completa de archivos `.xlsx`, `.xls` y `.csv`.
+- [x] **Lectura 100% Dinámica**: Sin límites fijos de filas, rangos rígidos ni referencias estáticas (procesa todas las filas presentes).
+- [x] **Mapeo por Nombre de Columna**: Mapeo independiente de la posición u orden de las columnas.
+- [x] **Preservación de Columnas Adicionales**: No se rechaza el archivo si tiene columnas extra. Se conservan en la propiedad `extraFields` de cada registro.
+- [x] **Manejo Detallado de Errores**:
+  - Si el archivo no es un Excel válido / está corrupto: muestra mensaje de error en español comprensible.
+  - Si falta una columna requerida: informa exactamente qué columna(s) faltan por su nombre.
+- [x] **Información de Metadatos Completa**: Muestra Banner *"Archivo cargado correctamente."*, Nombre del archivo, Tamaño, Cantidad de registros, Columnas detectadas y Nombre de la hoja activa.
+- [x] **Verificación y Compilación**: Proyecto verificado con `npx tsc --noEmit`, `npm run lint` y `npm run build`.
 
 ---
 
-## 7. Funcionalidades Pendientes (Fases Posteriores / PROMPT 02+)
+## 7. Funcionalidades Pendientes (Fases Posteriores / PROMPT 03+)
 - [ ] **Procesamiento de Archivos Pesados en Web Worker**: Optimización para archivos con >50,000 filas.
 - [ ] **Tabulación Avanzada Interactiva**: Paginación, ordenamiento por columnas e inspección de filas individuales.
 - [ ] **Filtros Dinámicos de UI**: Panel lateral de selección por rango de fechas, exportador, país de destino y canal.
 - [ ] **Gráficos Definitivos Recharts**: Ranking Top 10 Exportadores, Evolución Temporal FOB vs Qty, Pie Chart por País de Destino.
 - [ ] **Persistencia Real en Supabase**: Creación de tabla en Postgres y sincronización de datasets guardados.
 - [ ] **Exportación de Reportes**: Descarga de datos filtrados a Excel/CSV o PDF.
-- [ ] **Autenticación y Gestión de Usuarios**: Login/Registro vía Supabase Auth.
 
 ---
 
 ## 8. Decisiones Técnicas
 1. **Modelado Data-Driven**: Nunca se codifican nombres de exportadores, países, años ni número de filas. Todo el sistema responde a la estructura dinámica del archivo cargado.
-2. **Next.js App Router**: Utilizado para maximizar el rendimiento, generación de rutas de servidor estáticas y preparación para despliegue en Vercel.
-3. **Resiliencia de Supabase**: El cliente de Supabase detecta si `NEXT_PUBLIC_SUPABASE_URL` existe; si no está configurado, la aplicación funciona 100% en modo local de cliente sin romper builds.
+2. **Preservación de Columnas Extra**: Se identifican y almacenan dentro de `extraFields` en cada registro sin alterar las 8 propiedades normalizadas oficiales.
+3. **Mapeo por Nombre Caso-Insensible**: El validador busca coincidencias eliminando espacios laterales e ignorando mayúsculas/minúsculas (`toLowerCase()`), haciendo el sistema tolerante a variaciones de orden.
 
 ---
 
 ## 9. Dependencias Instaladas
-
-### Dependencias de Producción:
 - `next`: `16.3.4`
 - `react`: `19.2.8`
-- `react-dom`: `19.2.8`
 - `xlsx`: `^0.18.5`
 - `recharts`: `^3.10.1`
 - `@supabase/supabase-js`: `^2.114.0`
@@ -154,51 +156,10 @@ La aplicación valida estrictamente la presencia de las siguientes 8 columnas of
 - `clsx`: `^2.1.1`
 - `tailwind-merge`: `^3.6.0`
 
-### Dependencias de Desarrollo:
-- `typescript`: `^5`
-- `tailwindcss`: `^4`
-- `@tailwindcss/postcss`: `^4`
-- `eslint`: `^9`
-- `eslint-config-next`: `16.3.4`
-- `@types/node`: `^20`
-- `@types/react`: `^19`
-- `@types/react-dom`: `^19`
-
 ---
 
-## 10. Comandos para Ejecutar
-
-### Servidor de Desarrollo:
-```bash
-npm run dev
-```
-
-### Compilar para Producción:
-```bash
-npm run build
-```
-
-### Iniciar Servidor de Producción:
-```bash
-npm run start
-```
-
----
-
-## 11. Comandos para Probar
-
-### Verificación de Linters:
-```bash
-npm run lint
-```
-
-### Verificación de Tipos TypeScript:
-```bash
-npx tsc --noEmit
-```
-
----
-
-## 12. Problemas Conocidos / Notas
-- Ningún problema de compilación ni error de linters detectado.
-- La aplicación cumple estrictamente con el ámbito del PROMPT 01 y no avanza prematuramente hacia el PROMPT 02.
+## 10. Comandos para Ejecutar y Probar
+- Servidor de Desarrollo: `npm run dev`
+- Compilación de Producción: `npm run build`
+- Linter: `npm run lint`
+- Typecheck: `npx tsc --noEmit`

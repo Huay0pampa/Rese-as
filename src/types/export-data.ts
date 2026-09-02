@@ -19,7 +19,8 @@ export interface RawExportRecord {
 }
 
 /**
- * Normalized and validated record used across application logic
+ * Normalized and validated record used across application logic.
+ * Preserves additional non-official columns in extraFields for future use.
  */
 export interface NormalizedExportRecord {
   id: string;
@@ -31,6 +32,7 @@ export interface NormalizedExportRecord {
   fobUnd2: number;
   paisDestino: string;
   canal: string;
+  extraFields?: Record<string, unknown>;
 }
 
 /**
@@ -40,6 +42,9 @@ export interface FileMetadata {
   fileName: string;
   fileSize: number;
   fileType: 'xlsx' | 'xls' | 'csv' | 'unknown';
+  sheetName: string;
+  detectedColumnsCount: number;
+  additionalColumns: string[];
   totalRows: number;
   validRows: number;
   invalidRows: number;

@@ -2,8 +2,15 @@
 
 import React from 'react';
 import { FileMetadata } from '@/types';
-import { FileSpreadsheet, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
-import { formatFileSize } from '@/utils/formatters';
+import {
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Layers,
+  Sparkles,
+} from 'lucide-react';
+import { formatFileSize, formatNumber } from '@/utils/formatters';
 import { Badge } from '../common/Badge';
 
 export interface FileStatusCardProps {
@@ -13,55 +20,104 @@ export interface FileStatusCardProps {
 
 export function FileStatusCard({ metadata, onReset }: FileStatusCardProps) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 backdrop-blur-md">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* File Info */}
-        <div className="flex items-center space-x-3">
-          <div className="p-3 rounded-lg bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
-            <FileSpreadsheet className="w-6 h-6" />
+    <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-5 backdrop-blur-md space-y-4">
+      {/* Success Notification Banner */}
+      <div className="flex items-center justify-between border-b border-emerald-800/40 pb-3">
+        <div className="flex items-center space-x-2 text-emerald-400">
+          <CheckCircle2 className="w-5 h-5 shrink-0" />
+          <h3 className="text-sm font-bold tracking-wide">
+            Archivo cargado correctamente.
+          </h3>
+        </div>
+        <button
+          onClick={onReset}
+          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors flex items-center space-x-1.5"
+          title="Cargar otro archivo Excel"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>Cargar otro archivo</span>
+        </button>
+      </div>
+
+      {/* Main File & Metadata Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-1">
+        {/* File Name & Type */}
+        <div className="flex items-center space-x-3 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+          <div className="p-2 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-800/50">
+            <FileSpreadsheet className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h4 className="text-sm font-semibold text-slate-100">{metadata.fileName}</h4>
-              <Badge variant="success" className="uppercase text-[10px]">
-                {metadata.fileType}
-              </Badge>
-            </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Tamaño: {formatFileSize(metadata.fileSize)} • Procesado el:{' '}
-              {new Date(metadata.uploadedAt).toLocaleTimeString()}
+          <div className="truncate">
+            <p className="text-[11px] text-slate-400">Archivo</p>
+            <p className="text-xs font-semibold text-slate-100 truncate" title={metadata.fileName}>
+              {metadata.fileName}
             </p>
+            <p className="text-[10px] text-slate-400">{formatFileSize(metadata.fileSize)}</p>
           </div>
         </div>
 
-        {/* Row Counts & Reset */}
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-3 text-xs bg-slate-950/80 px-4 py-2 rounded-lg border border-slate-800">
-            <div className="flex items-center space-x-1.5 text-emerald-400">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{metadata.validRows.toLocaleString()} válidos</span>
-            </div>
-            {metadata.invalidRows > 0 && (
-              <>
-                <span className="text-slate-700">|</span>
-                <div className="flex items-center space-x-1.5 text-amber-400">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>{metadata.invalidRows.toLocaleString()} descartados</span>
-                </div>
-              </>
+        {/* Quantity of Records */}
+        <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+          <p className="text-[11px] text-slate-400">Cantidad de registros</p>
+          <p className="text-sm font-bold text-emerald-400 mt-0.5">
+            {formatNumber(metadata.totalRows)}
+          </p>
+          <p className="text-[10px] text-slate-400">Filas leídas dinámicamente</p>
+        </div>
+
+        {/* Columns Detected */}
+        <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+          <p className="text-[11px] text-slate-400">Columnas detectadas</p>
+          <div className="flex items-center space-x-2 mt-0.5">
+            <p className="text-sm font-bold text-slate-100">
+              {metadata.detectedColumnsCount}
+            </p>
+            {metadata.additionalColumns.length > 0 && (
+              <Badge variant="info" className="text-[10px] px-1.5 py-0">
+                +{metadata.additionalColumns.length} extra
+              </Badge>
             )}
           </div>
+          <p className="text-[10px] text-slate-400">Mapeadas por nombre</p>
+        </div>
 
-          <button
-            onClick={onReset}
-            className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors flex items-center space-x-1.5"
-            title="Cargar otro archivo"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Nuevo Archivo</span>
-          </button>
+        {/* Sheet Name */}
+        <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+          <p className="text-[11px] text-slate-400">Nombre de la hoja</p>
+          <div className="flex items-center space-x-1.5 mt-0.5 text-slate-200">
+            <Layers className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+            <p className="text-xs font-semibold truncate" title={metadata.sheetName}>
+              {metadata.sheetName}
+            </p>
+          </div>
+          <p className="text-[10px] text-slate-400">Hoja activa procesada</p>
+        </div>
+
+        {/* Status indicator / Additional columns detail */}
+        <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 flex flex-col justify-between">
+          <p className="text-[11px] text-slate-400">Estado del Dataset</p>
+          <div className="flex items-center space-x-1 text-emerald-400 text-xs font-semibold">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Dataset en Memoria</span>
+          </div>
+          <p className="text-[10px] text-slate-400">Listo para tabulación</p>
         </div>
       </div>
+
+      {/* Additional Columns Preserved Callout */}
+      {metadata.additionalColumns.length > 0 && (
+        <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <span>
+              <strong className="text-slate-200">Columnas adicionales conservadas:</strong>{' '}
+              {metadata.additionalColumns.join(', ')}
+            </span>
+          </div>
+          <Badge variant="outline" className="text-[10px]">
+            Conservadas para uso futuro
+          </Badge>
+        </div>
+      )}
     </div>
   );
 }
