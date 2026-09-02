@@ -8,6 +8,7 @@ import { FileStatusCard } from '@/components/upload/FileStatusCard';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { SummaryPlaceholder } from '@/components/dashboard/SummaryPlaceholder';
+import { DataQualityDiagnosticsCard } from '@/components/dashboard/DataQualityDiagnosticsCard';
 import { DataTablePlaceholder } from '@/components/tables/DataTablePlaceholder';
 import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 
@@ -47,7 +48,12 @@ export default function HomePage() {
         </div>
 
         {uploadState.status === 'ready' && uploadState.metadata ? (
-          <FileStatusCard metadata={uploadState.metadata} onReset={handleReset} />
+          <div className="space-y-4">
+            <FileStatusCard metadata={uploadState.metadata} onReset={handleReset} />
+            {uploadState.qualityReport && (
+              <DataQualityDiagnosticsCard report={uploadState.qualityReport} />
+            )}
+          </div>
         ) : (
           <FileUploader
             status={uploadState.status}
