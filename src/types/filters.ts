@@ -1,5 +1,5 @@
 /**
- * Interfaces for filtering export records.
+ * Interfaces for dynamic multi-criteria filtering of export records.
  */
 
 export interface DateRangeFilter {
@@ -13,11 +13,13 @@ export interface RangeFilter {
 }
 
 /**
- * Filter options available dynamically from the current dataset
+ * Dynamic filter options extracted directly from the active dataset
  */
 export interface FilterOptions {
+  years: number[];
   exporters: string[];
   destinations: string[];
+  customsHeadings: string[];
   channels: string[];
   minFob: number;
   maxFob: number;
@@ -30,9 +32,21 @@ export interface FilterOptions {
  */
 export interface ActiveFilters {
   searchQuery: string;
+  selectedYears: number[];
   selectedExporters: string[];
   selectedDestinations: string[];
+  selectedCustomsHeadings: string[];
   selectedChannels: string[];
   dateRange: DateRangeFilter;
   fobRange: RangeFilter;
+}
+
+/**
+ * Single active filter badge item for UI state display and removal
+ */
+export interface ActiveFilterBadge {
+  id: string;
+  category: 'search' | 'year' | 'exporter' | 'destination' | 'heading' | 'channel' | 'dateRange' | 'fobRange';
+  label: string;
+  value: unknown;
 }

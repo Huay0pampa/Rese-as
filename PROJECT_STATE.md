@@ -34,12 +34,13 @@ c:\Users\Acer\Desktop\APP Veritrade\
 ├── next.config.ts                  # Configuración de Next.js
 ├── public/                         # Recursos estáticos
 ├── scripts/
-│   └── test-analytics-engine.mjs   # Script de pruebas automatizadas para el motor de análisis
+│   ├── test-analytics-engine.mjs   # Script de pruebas automatizadas para el motor de análisis
+│   └── test-filter-engine.mjs      # Script de pruebas automatizadas para el motor de filtros
 └── src/
     ├── app/
     │   ├── globals.css             # Estilos globales, variables de tema y scrollbars
     │   ├── layout.tsx              # Root Layout (Google Font Inter, Header, Footer)
-    │   └── page.tsx                # Página principal del Analizador
+    │   └── page.tsx                # Página principal del Analizador (con Filtros y Diagnóstico)
     ├── components/
     │   ├── common/
     │   │   ├── Header.tsx          # Cabecera principal con branding e indicadores
@@ -53,6 +54,7 @@ c:\Users\Acer\Desktop\APP Veritrade\
     │   │   ├── DashboardShell.tsx  # Layout grid para el dashboard
     │   │   ├── EmptyState.tsx      # Estado inicial explicativo previo a la carga
     │   │   ├── DataQualityDiagnosticsCard.tsx # Tarjeta de Diagnóstico de Calidad de Datos del Archivo
+    │   │   ├── FilterPanelCard.tsx # Tarjeta de Panel de Filtros Dinámicos Multicriterio
     │   │   └── SummaryPlaceholder.tsx# Tarjetas de resumen de KPIs (FOB Total, Qty, etc.)
     │   ├── tables/
     │   │   └── DataTablePlaceholder.tsx # Vista previa y estructura para la tabla interactiva
@@ -72,9 +74,9 @@ c:\Users\Acer\Desktop\APP Veritrade\
     │   │   └── processor.ts        # Pipeline unificado (Parsing -> Validation -> Normalization -> Diagnostics)
     │   ├── analysis/
     │   │   ├── analyzer.ts         # Cálculo dinámico de métricas y agregaciones
-    │   │   └── analyticsEngine.ts  # Motor de Análisis Dinámico (Dimensiones, Métricas, Operaciones, Orden Cronológico)
+    │   │   └── analyticsEngine.ts  # Motor de Análisis Dinámico
     │   ├── filters/
-    │   │   └── filterEngine.ts     # Motor de filtrado multicriterio en memoria
+    │   │   └── filterEngine.ts     # Motor de filtrado multicriterio en memoria y extracción dinámica de opciones
     │   ├── export/
     │   │   └── exporter.ts         # Interfaz para exportación (XLSX, CSV, JSON)
     │   └── supabase/
@@ -82,16 +84,16 @@ c:\Users\Acer\Desktop\APP Veritrade\
     ├── services/
     │   ├── file-service.ts         # Servicio de ciclo de vida de archivos
     │   ├── persistence-service.ts  # Servicio de persistencia en Supabase (Placeholder)
-    │   └── analytics-service.ts    # Servicio de cálculo analítico (expone AnalyticsEngine)
+    │   └── analytics-service.ts    # Servicio de cálculo analítico
     ├── types/
     │   ├── export-data.ts          # Interfaces de datos exportados y metadatos
     │   ├── schema.ts               # Interfaces de definición de esquema
-    │   ├── analysis.ts             # Interfaces (AnalysisDimension, AnalysisMetric, AnalysisOperation, AnalysisQueryResult)
-    │   ├── filters.ts              # Interfaces de FilterOptions, ActiveFilters
+    │   ├── analysis.ts             # Interfaces de análisis y consultas
+    │   ├── filters.ts              # Interfaces (ActiveFilters, FilterOptions, ActiveFilterBadge)
     │   └── index.ts                # Archivo barril exportador de tipos
     ├── hooks/
     │   ├── useFileUpload.ts        # Hook para gestionar la carga y progreso
-    │   ├── useExportData.ts        # Hook para el estado de datos normalizados y filtros
+    │   ├── useExportData.ts        # Hook para el estado de datos normalizados, insignias y filtrado
     │   └── useAnalyticsQuery.ts    # Hook para consultas memoizadas al motor de análisis
     └── utils/
         ├── formatters.ts           # Formateadores de moneda (USD FOB), fechas y números
@@ -102,7 +104,7 @@ c:\Users\Acer\Desktop\APP Veritrade\
 
 ## 5. Esquema Oficial de Columnas (Excel)
 
-La aplicación valida estrictamente la presencia de las siguientes 8 columnas oficiales:
+La aplicación valida strictly la presencia de las siguientes 8 columnas oficiales:
 
 1. `Descripcion de la Partida Aduanera` (Texto)
 2. `Fecha` (Fecha YYYY-MM-DD)
@@ -132,22 +134,28 @@ La aplicación valida estrictamente la presencia de las siguientes 8 columnas of
 
 ### PROMPT 04 — Motor de Análisis Dinámico
 - [x] **Dimensiones Seleccionables**: Año, Mes, Año-Mes, Descripción de Partida, Exportador, País de Destino, Canal.
-- [x] **Métricas Seleccionables**: Qty 1, U$ FOB Tot, U$ FOB Und 2.
-- [x] **Operaciones Seleccionables**: Suma (`sum`), Promedio (`avg`), Mínimo (`min`), Máximo (`max`), Conteo (`count`).
-- [x] **Regla Data-Driven 100% Dinámica**: 0 valores codificados. Si ingresa un nuevo exportador o año, aparece automáticamente.
-- [x] **Ordenamiento Cronológico Inteligente**:
-  - Para meses: Orden por índice mensual (1-12: Enero, Febrero... Diciembre), **nunca alfabético**.
-  - Para temporalidad: Orden cronológico natural.
-  - Para métricas: Ordenamiento por valor o categoría (ascendente/descendente).
-- [x] **Precisión Flotante**: Cálculo con precisión interna nativa y formateo de presentación configurado (`$ USD` o número).
-- [x] **Optimizaciones de Rendimiento**: Separación estricta de lógica (`analyticsEngine.ts`) y Hook React con memoización (`useAnalyticsQuery.ts`).
-- [x] **Pruebas Automatizadas**: Ejecutado `test-analytics-engine.mjs` verificando agrupamientos combinados exitosamente.
+- [x] **Métricas y Operaciones**: Suma, Promedio, Mínimo, Máximo, Conteo sobre Qty 1, FOB Tot, FOB Und 2.
+- [x] **Ordenamiento Cronológico Inteligente**: Meses ordenados por ordinal (1-12), nunca alfabético.
+
+### PROMPT 05 — Sistema de Filtros Dinámicos
+- [x] **Extracción 100% Data-Driven (0 Hardcoding)**:
+  - Generación dinámica de opciones de filtrado a partir de los datos reales del archivo cargado (Años, Exportadores, Países de Destino, Partidas Aduaneras, Canales).
+  - Si el archivo trae 31 exportadores, se muestran 31. Si trae 45, se muestran 45. Si un país no existe en la carga, no se muestra.
+- [x] **Combinación Multicriterio**:
+  - Aplicación simultánea de filtros (Lógica AND entre campos, lógica OR dentro de selecciones múltiples).
+  - Ejemplo verificado: `Año = 2025` AND `País = China` AND `Exportador = EXANDAL S.A.C.`.
+- [x] **Gestión de Filtros en UI (`FilterPanelCard`)**:
+  - **Búsqueda Libre**: Filtro por texto en descripción, exportador, país o canal.
+  - **Rango de Fechas**: Selectores de fecha inicio y fin.
+  - **Insignias de Filtros Activos (`ActiveFilterBadge`)**: Chips clicables con botón `(x)` para remover filtros individuales.
+  - **Botón "Limpiar Filtros"**: Restablece todos los criterios de filtrado al estado inicial.
+  - **Indicador de Registros Filtrados**: Muestra el total de registros visibles vs el total cargado y su porcentaje (`Mostrando X de Y registros (Z%)`).
+- [x] **Pruebas Automatizadas**: Ejecutado `scripts/test-filter-engine.mjs` validando combinación multicriterio y extracción dinámica.
 
 ---
 
-## 7. Funcionalidades Pendientes (Fases Posteriores / PROMPT 05+)
+## 7. Funcionalidades Pendientes (Fases Posteriores / PROMPT 06+)
 - [ ] **Tabulación Avanzada Interactiva**: Paginación, ordenamiento por columnas e inspección de filas individuales.
-- [ ] **Filtros Dinámicos de UI**: Panel lateral de selección por rango de fechas, exportador, país de destino y canal.
 - [ ] **Gráficos Definitivos Recharts**: Ranking Top 10 Exportadores, Evolución Temporal FOB vs Qty, Pie Chart por País de Destino.
 - [ ] **Persistencia Real en Supabase**: Creación de tabla en Postgres y sincronización de datasets guardados.
 - [ ] **Exportación de Reportes**: Descarga de datos filtrados a Excel/CSV o PDF.
@@ -155,9 +163,9 @@ La aplicación valida estrictamente la presencia de las siguientes 8 columnas of
 ---
 
 ## 8. Decisiones Técnicas
-1. **Motor decoupled y puro**: `executeAnalyticsQuery` no depende de componentes React, permitiendo ser invocado en Web Workers, Server Components o hooks.
-2. **Hook Memoizado**: `useAnalyticsQuery` utiliza `useMemo` con array de dependencias `[records, options]` para evitar recalcular innecesariamente en re-renders de UI.
-3. **Ordenamiento de Meses por `sortKey`**: Cada mes normalizado almacena su número ordinal (1 a 12), garantizando un orden temporal correcto en gráficos y tablas.
+1. **Extracción Dinámica Pura**: Las opciones de filtro se recalculan vía `useMemo` sobre la propiedad `records` limpia, garantizando refresco inmediato al cambiar de archivo.
+2. **Despliegue de Chips Removibles**: Cada filtro activo genera un badge con identificador único que permite removerlo de forma independiente sin afectar los demás filtros seleccionados.
+3. **Arquitectura Extensible**: La estructura `ActiveFilters` y `filterExportRecords` está preparada para recibir filtros adicionales en el futuro (ej. rangos de precios o campos personalizados).
 
 ---
 
@@ -179,3 +187,4 @@ La aplicación valida estrictamente la presencia de las siguientes 8 columnas of
 - Linter: `npm run lint`
 - Typecheck: `npx tsc --noEmit`
 - Pruebas del Motor de Análisis: `npx tsx scripts/test-analytics-engine.mjs`
+- Pruebas del Motor de Filtros: `npx tsx scripts/test-filter-engine.mjs`

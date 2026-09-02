@@ -9,14 +9,24 @@ import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { SummaryPlaceholder } from '@/components/dashboard/SummaryPlaceholder';
 import { DataQualityDiagnosticsCard } from '@/components/dashboard/DataQualityDiagnosticsCard';
+import { FilterPanelCard } from '@/components/dashboard/FilterPanelCard';
 import { DataTablePlaceholder } from '@/components/tables/DataTablePlaceholder';
 import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 
 export default function HomePage() {
   const { state: uploadState, uploadFile, resetUpload } = useFileUpload();
-  const { setRecords, filteredRecords, summaryMetrics } = useExportData(
-    uploadState.normalizedRecords
-  );
+  const {
+    records,
+    setRecords,
+    filteredRecords,
+    filters,
+    setFilters,
+    filterOptions,
+    activeBadges,
+    summaryMetrics,
+    resetFilters,
+    removeFilterBadge,
+  } = useExportData(uploadState.normalizedRecords);
 
   const handleFileSelect = async (file: File) => {
     const result = await uploadFile(file);
@@ -28,9 +38,10 @@ export default function HomePage() {
   const handleReset = () => {
     resetUpload();
     setRecords([]);
+    resetFilters();
   };
 
-  const hasData = uploadState.status === 'ready' && uploadState.normalizedRecords.length > 0;
+  const hasData = uploadState.status === 'ready' && records.length > 0;
 
   return (
     <div className="space-y-8">
@@ -63,6 +74,22 @@ export default function HomePage() {
           />
         )}
       </section>
+
+      {/* Dynamic Filters Section */}
+      {hasData && (
+        <section>
+          <FilterPanelCard
+            filterOptions={filterOptions}
+            activeFilters={filters}
+            activeBadges={activeBadges}
+            totalRecordsCount={records.length}
+            filteredRecordsCount={filteredRecords.length}
+            onUpdateFilters={setFilters}
+            onResetFilters={resetFilters}
+            onRemoveBadge={removeFilterBadge}
+          />
+        </section>
+      )}
 
       {/* Dashboard Reserved Area */}
       <section className="space-y-6">
