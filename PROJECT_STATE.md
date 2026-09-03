@@ -57,7 +57,8 @@ c:\Users\Acer\Desktop\APP Veritrade\
     │   │   ├── FilterPanelCard.tsx # Tarjeta de Panel de Filtros Dinámicos Multicriterio
     │   │   └── SummaryPlaceholder.tsx# Tarjetas de resumen de KPIs (FOB Total, Qty, etc.)
     │   ├── tables/
-    │   │   └── DataTablePlaceholder.tsx # Vista previa y estructura para la tabla interactiva
+    │   │   ├── AnalyticsDataTableCard.tsx  # Tabla de Resultados conectada al motor analítico (paginación, orden, búsqueda)
+    │   │   └── DataTablePlaceholder.tsx    # Vista previa (legacy, aún importable)
     │   └── charts/
     │       └── ChartPlaceholder.tsx  # Vista previa y contenedor listo para Recharts
     ├── lib/
@@ -152,9 +153,16 @@ La aplicación valida strictly la presencia de las siguientes 8 columnas oficial
   - **Indicador de Registros Filtrados**: Muestra el total de registros visibles vs el total cargado y su porcentaje (`Mostrando X de Y registros (Z%)`).
 - [x] **Pruebas Automatizadas**: Ejecutado `scripts/test-filter-engine.mjs` validando combinación multicriterio y extracción dinámica.
 
----
-
-## 7. Funcionalidades Pendientes (Fases Posteriores / PROMPT 06+)
+### PROMPT 06 — Tabla de Resultados
+- [x] **Componente `AnalyticsDataTableCard`**: Tabla dinámica conectada directamente a `executeAnalyticsQuery`.
+- [x] **Controles Integrados**: Selectores interactivos de Dimensión, Métrica y Operación integrados en la propia tarjeta.
+- [x] **Búsqueda Interna**: Filtrado en tiempo real de las filas de la tabla por categoría.
+- [x] **Ordenamiento de Columnas**: Sortable por Categoría, Resultado, Registros y % del Total (ascendente/descendente) con indicadores de dirección.
+- [x] **Fila de Total General**: Suma de Resultados y Registros del conjunto filtrado; indica si el total es parcial o completo.
+- [x] **Formato Numérico/Monetario**: Detección automática de métrica FOB (`$`) vs Qty (número entero); columna de porcentaje con barra mini de progreso.
+- [x] **Paginación Completa**: Controles de primera/última/anterior/siguiente página; selector de tamaño (10, 25, 50, 100 filas).
+- [x] **Estados de UI**: Estado vacío, skeleton de carga, y estado sin resultados de búsqueda con acción de limpiar.
+- [x] **Actualización Reactiva**: La tabla se re-ejecuta automáticamente ante cambio de agrupación, métrica, operación o filtros del panel.
 - [ ] **Tabulación Avanzada Interactiva**: Paginación, ordenamiento por columnas e inspección de filas individuales.
 - [ ] **Gráficos Definitivos Recharts**: Ranking Top 10 Exportadores, Evolución Temporal FOB vs Qty, Pie Chart por País de Destino.
 - [ ] **Persistencia Real en Supabase**: Creación de tabla en Postgres y sincronización de datasets guardados.
