@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/dashboard/EmptyState';
 import { SummaryPlaceholder } from '@/components/dashboard/SummaryPlaceholder';
 import { DataQualityDiagnosticsCard } from '@/components/dashboard/DataQualityDiagnosticsCard';
 import { FilterPanelCard } from '@/components/dashboard/FilterPanelCard';
-import { DataTablePlaceholder } from '@/components/tables/DataTablePlaceholder';
+import { AnalyticsDataTableCard } from '@/components/tables/AnalyticsDataTableCard';
 import { ChartPlaceholder } from '@/components/charts/ChartPlaceholder';
 
 export default function HomePage() {
@@ -107,7 +107,7 @@ export default function HomePage() {
           <SummaryPlaceholder metrics={hasData ? summaryMetrics : undefined} />
 
           {/* Data Table Area */}
-          <DataTablePlaceholder records={hasData ? filteredRecords : []} />
+          <AnalyticsDataTableCard records={hasData ? filteredRecords : []} />
 
           {/* Recharts Area */}
           <ChartPlaceholder />
