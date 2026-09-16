@@ -2,15 +2,17 @@
 
 import React, { useState, useMemo } from 'react';
 import {
-  NormalizedExportRecord,
   AnalysisDimension,
   AnalysisMetric,
   AnalysisOperation,
   AnalyticsDataPoint,
+  AnalysisQueryResult,
+  SummaryMetrics,
+  ActiveFilterBadge,
 } from '@/types';
-import { executeAnalyticsQuery } from '@/lib/analysis/analyticsEngine';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
+import { exportAnalyticsResult, exportAnalyticsResultToPDF, ExportFormat } from '@/lib/export/exporter';
 import {
   Table2,
   ChevronUp,
@@ -24,12 +26,15 @@ import {
   BarChart3,
   Hash,
   Sigma,
+  Download,
+  FileText,
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/utils/formatters';
 
+
 // ── Selectable Options ─────────────────────────────────────────────────────
 
-const DIMENSION_OPTIONS: { value: AnalysisDimension; label: string }[] = [
+export const DIMENSION_OPTIONS: { value: AnalysisDimension; label: string }[] = [
   { value: 'exportador', label: 'Exportador' },
   { value: 'paisDestino', label: 'País de Destino' },
   { value: 'descripcionPartida', label: 'Partida Aduanera' },
@@ -39,13 +44,13 @@ const DIMENSION_OPTIONS: { value: AnalysisDimension; label: string }[] = [
   { value: 'canal', label: 'Canal' },
 ];
 
-const METRIC_OPTIONS: { value: AnalysisMetric; label: string; isCurrency: boolean }[] = [
+export const METRIC_OPTIONS: { value: AnalysisMetric; label: string; isCurrency: boolean }[] = [
   { value: 'fobTot', label: 'U$ FOB Total', isCurrency: true },
   { value: 'qty1', label: 'Cantidad (Qty 1)', isCurrency: false },
   { value: 'fobUnd2', label: 'U$ FOB Und 2', isCurrency: true },
 ];
 
-const OPERATION_OPTIONS: { value: AnalysisOperation; label: string }[] = [
+export const OPERATION_OPTIONS: { value: AnalysisOperation; label: string }[] = [
   { value: 'sum', label: 'Suma' },
   { value: 'avg', label: 'Promedio' },
   { value: 'min', label: 'Mínimo' },
@@ -81,25 +86,41 @@ interface SortState {
 // ── Props ──────────────────────────────────────────────────────────────────
 
 export interface AnalyticsDataTableCardProps {
-  records: NormalizedExportRecord[];
+  queryResult: AnalysisQueryResult | null;
+  dimension: AnalysisDimension;
+  metric: AnalysisMetric;
+  operation: AnalysisOperation;
+  onDimensionChange: (d: AnalysisDimension) => void;
+  onMetricChange: (m: AnalysisMetric) => void;
+  onOperationChange: (o: AnalysisOperation) => void;
   isLoading?: boolean;
+  summaryMetrics?: SummaryMetrics;
+  activeBadges?: ActiveFilterBadge[];
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export function AnalyticsDataTableCard({ records, isLoading = false }: AnalyticsDataTableCardProps) {
-  const [dimension, setDimension] = useState<AnalysisDimension>('exportador');
-  const [metric, setMetric] = useState<AnalysisMetric>('fobTot');
-  const [operation, setOperation] = useState<AnalysisOperation>('sum');
+export const AnalyticsDataTableCard = React.memo(function AnalyticsDataTableCard({
+  queryResult,
+  dimension,
+  metric,
+  operation,
+  onDimensionChange,
+  onMetricChange,
+  onOperationChange,
+  isLoading = false,
+  summaryMetrics,
+  activeBadges = [],
+}: AnalyticsDataTableCardProps) {
   const [tableSearch, setTableSearch] = useState('');
   const [sort, setSort] = useState<SortState>({ col: 'value', dir: 'desc' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // Reset to page 1 when controls change
-  const handleDimension = (v: AnalysisDimension) => { setDimension(v); setPage(1); setTableSearch(''); };
-  const handleMetric = (v: AnalysisMetric) => { setMetric(v); setPage(1); };
-  const handleOperation = (v: AnalysisOperation) => { setOperation(v); setPage(1); };
+  // Reset page on dimension / search change
+  const handleDimension = (v: AnalysisDimension) => { onDimensionChange(v); setPage(1); setTableSearch(''); };
+  const handleMetric = (v: AnalysisMetric) => { onMetricChange(v); setPage(1); };
+  const handleOperation = (v: AnalysisOperation) => { onOperationChange(v); setPage(1); };
   const handleSearch = (v: string) => { setTableSearch(v); setPage(1); };
 
   const isCurrency = useMemo(
@@ -107,72 +128,43 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
     [metric]
   );
 
-  // ── Execute query ────────────────────────────────────────────────────────
-  const queryResult = useMemo(() => {
-    if (records.length === 0) return null;
-    return executeAnalyticsQuery(records, {
-      dimension,
-      metric,
-      operation,
-      sortField: 'value',
-      sortOrder: 'desc',
-    });
-  }, [records, dimension, metric, operation]);
-
-  // ── Table-level search ───────────────────────────────────────────────────
+  // ── Table-level search ────────────────────────────────────────────────
   const searched: AnalyticsDataPoint[] = useMemo(() => {
     if (!queryResult) return [];
     if (!tableSearch.trim()) return queryResult.data;
     const q = tableSearch.toLowerCase();
-    return queryResult.data.filter((dp) =>
-      dp.category.toLowerCase().includes(q)
-    );
+    return queryResult.data.filter((dp) => dp.category.toLowerCase().includes(q));
   }, [queryResult, tableSearch]);
 
-  // ── Column sorting ───────────────────────────────────────────────────────
+  // ── Column sorting ────────────────────────────────────────────────────
   const sorted: AnalyticsDataPoint[] = useMemo(() => {
     return [...searched].sort((a, b) => {
       let cmp = 0;
-      if (sort.col === 'category') {
-        cmp = a.category.localeCompare(b.category);
-      } else if (sort.col === 'value') {
-        cmp = a.value - b.value;
-      } else if (sort.col === 'recordCount') {
-        cmp = a.recordCount - b.recordCount;
-      } else if (sort.col === 'percentage') {
-        cmp = a.percentageOfTotal - b.percentageOfTotal;
-      }
+      if (sort.col === 'category') cmp = a.category.localeCompare(b.category);
+      else if (sort.col === 'value') cmp = a.value - b.value;
+      else if (sort.col === 'recordCount') cmp = a.recordCount - b.recordCount;
+      else if (sort.col === 'percentage') cmp = a.percentageOfTotal - b.percentageOfTotal;
       return sort.dir === 'asc' ? cmp : -cmp;
     });
   }, [searched, sort]);
 
-  // ── Pagination ───────────────────────────────────────────────────────────
+  // ── Pagination ────────────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const paginated = useMemo(
     () => sorted.slice((page - 1) * pageSize, page * pageSize),
     [sorted, page, pageSize]
   );
 
-  // ── Grand Totals ─────────────────────────────────────────────────────────
-  const grandTotalValue = useMemo(
-    () => searched.reduce((acc, dp) => acc + dp.value, 0),
-    [searched]
-  );
-  const grandTotalRecords = useMemo(
-    () => searched.reduce((acc, dp) => acc + dp.recordCount, 0),
-    [searched]
-  );
+  // ── Grand totals ──────────────────────────────────────────────────────
+  const grandTotalValue = useMemo(() => searched.reduce((acc, dp) => acc + dp.value, 0), [searched]);
+  const grandTotalRecords = useMemo(() => searched.reduce((acc, dp) => acc + dp.recordCount, 0), [searched]);
 
-  // ── Sort toggle helper ───────────────────────────────────────────────────
   const toggleSort = (col: SortCol) => {
     setSort((prev) =>
-      prev.col === col
-        ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-        : { col, dir: 'desc' }
+      prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' }
     );
     setPage(1);
   };
-
 
   const formatValue = (v: number) =>
     operation === 'count' ? formatNumber(v) : isCurrency ? formatCurrency(v) : formatNumber(v);
@@ -181,8 +173,7 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
   const metricLabel = METRIC_OPTIONS.find((m) => m.value === metric)?.label ?? '';
   const operationLabel = OPERATION_OPTIONS.find((o) => o.value === operation)?.label ?? '';
 
-  // ── Render States ────────────────────────────────────────────────────────
-
+  // ── Loading state ─────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <Card className="p-6">
@@ -199,7 +190,8 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
     );
   }
 
-  if (records.length === 0) {
+  // ── Empty state ───────────────────────────────────────────────────────
+  if (!queryResult || queryResult.data.length === 0) {
     return (
       <Card className="p-10 flex flex-col items-center justify-center space-y-3 text-center">
         <Table2 className="w-10 h-10 text-slate-700" />
@@ -208,6 +200,19 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
       </Card>
     );
   }
+
+  const handleExport = async (format: ExportFormat) => {
+    if (!queryResult) return;
+    try {
+      if (format === 'pdf') {
+        exportAnalyticsResultToPDF(queryResult, summaryMetrics, activeBadges);
+        return;
+      }
+      await exportAnalyticsResult(queryResult, format);
+    } catch (err) {
+      console.error('Error al exportar tabla de resultados:', err);
+    }
+  };
 
   return (
     <Card className="p-0 overflow-hidden">
@@ -230,17 +235,50 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center flex-wrap gap-2 text-xs">
             <Badge variant="info">
               <Sigma className="w-3 h-3 mr-1" />
-              {queryResult ? queryResult.totalGroups : 0} grupos
+              {queryResult.totalGroups} grupos
             </Badge>
             <Badge variant="default">
               <Hash className="w-3 h-3 mr-1" />
-              {queryResult ? formatNumber(queryResult.totalRecordsProcessed) : 0} registros
+              {formatNumber(queryResult.totalRecordsProcessed)} registros
             </Badge>
+            <div className="flex items-center gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+              <button
+                onClick={() => handleExport('xlsx')}
+                title="Exportar a Excel (.xlsx)"
+                className="px-2 py-1 rounded text-[11px] font-medium text-emerald-400 hover:bg-emerald-950/50 border border-emerald-800/50 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Download className="w-3 h-3" />
+                <span>XLSX</span>
+              </button>
+              <button
+                onClick={() => handleExport('csv')}
+                title="Exportar a CSV (.csv)"
+                className="px-2 py-1 rounded text-[11px] font-medium text-cyan-400 hover:bg-cyan-950/50 border border-cyan-800/50 transition-colors cursor-pointer"
+              >
+                CSV
+              </button>
+              <button
+                onClick={() => handleExport('pdf')}
+                title="Imprimir / Exportar Reporte PDF (.pdf)"
+                className="px-2 py-1 rounded text-[11px] font-medium text-indigo-300 hover:bg-indigo-950/50 border border-indigo-800/50 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <FileText className="w-3 h-3 text-indigo-400" />
+                <span>PDF</span>
+              </button>
+              <button
+                onClick={() => handleExport('json')}
+                title="Exportar a JSON (.json)"
+                className="px-2 py-1 rounded text-[11px] font-medium text-amber-400 hover:bg-amber-950/50 border border-amber-800/50 transition-colors cursor-pointer"
+              >
+                JSON
+              </button>
+            </div>
           </div>
         </div>
+
 
         {/* Control Selectors */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
@@ -297,15 +335,12 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
         </div>
       </div>
 
-      {/* ── Empty search state ── */}
-      {searched.length === 0 && records.length > 0 && (
+      {/* ── Empty search ── */}
+      {searched.length === 0 && queryResult.data.length > 0 && (
         <div className="px-5 py-10 flex flex-col items-center space-y-2 text-center">
           <AlertCircle className="w-8 h-8 text-amber-600" />
           <p className="text-slate-400 text-sm">Sin resultados para <span className="text-amber-400 font-medium">&quot;{tableSearch}&quot;</span></p>
-          <button
-            onClick={() => handleSearch('')}
-            className="text-xs text-indigo-400 hover:underline mt-1"
-          >
+          <button onClick={() => handleSearch('')} className="text-xs text-indigo-400 hover:underline mt-1">
             Limpiar búsqueda
           </button>
         </div>
@@ -318,113 +353,68 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900/60 border-b border-slate-800">
-                  <th className="px-5 py-3 text-left w-8 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    #
+                  <th className="px-5 py-3 text-left w-8 text-[11px] font-bold text-slate-500 uppercase tracking-wider">#</th>
+                  <th className="px-4 py-3 text-left cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider" onClick={() => toggleSort('category')}>
+                    <span className="flex items-center">{dimensionLabel}<SortIcon col="category" activeCol={sort.col} dir={sort.dir} /></span>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider"
-                    onClick={() => toggleSort('category')}
-                  >
-                    <span className="flex items-center">
-                      {dimensionLabel}
-                      <SortIcon col="category" activeCol={sort.col} dir={sort.dir} />
-                    </span>
+                  <th className="px-4 py-3 text-right cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider" onClick={() => toggleSort('value')}>
+                    <span className="flex items-center justify-end">{operationLabel} · {metricLabel}<SortIcon col="value" activeCol={sort.col} dir={sort.dir} /></span>
                   </th>
-                  <th
-                    className="px-4 py-3 text-right cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider"
-                    onClick={() => toggleSort('value')}
-                  >
-                    <span className="flex items-center justify-end">
-                      {operationLabel} · {metricLabel}
-                      <SortIcon col="value" activeCol={sort.col} dir={sort.dir} />
-                    </span>
+                  <th className="px-4 py-3 text-right cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider" onClick={() => toggleSort('recordCount')}>
+                    <span className="flex items-center justify-end">Registros<SortIcon col="recordCount" activeCol={sort.col} dir={sort.dir} /></span>
                   </th>
-                  <th
-                    className="px-4 py-3 text-right cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider"
-                    onClick={() => toggleSort('recordCount')}
-                  >
-                    <span className="flex items-center justify-end">
-                      Registros
-                      <SortIcon col="recordCount" activeCol={sort.col} dir={sort.dir} />
-                    </span>
-                  </th>
-                  <th
-                    className="px-5 py-3 text-right cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider"
-                    onClick={() => toggleSort('percentage')}
-                  >
-                    <span className="flex items-center justify-end">
-                      % del Total
-                      <SortIcon col="percentage" activeCol={sort.col} dir={sort.dir} />
-                    </span>
+                  <th className="px-5 py-3 text-right cursor-pointer hover:text-slate-200 transition-colors text-[11px] font-bold text-slate-400 uppercase tracking-wider" onClick={() => toggleSort('percentage')}>
+                    <span className="flex items-center justify-end">% del Total<SortIcon col="percentage" activeCol={sort.col} dir={sort.dir} /></span>
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {paginated.map((dp, idx) => {
                   const rowNum = (page - 1) * pageSize + idx + 1;
-                  const pct = grandTotalValue > 0
-                    ? Math.round((dp.value / grandTotalValue) * 1000) / 10
-                    : 0;
+                  const pct = grandTotalValue > 0 ? Math.round((dp.value / grandTotalValue) * 1000) / 10 : 0;
                   return (
-                    <tr
-                      key={dp.category}
-                      className="hover:bg-slate-800/30 transition-colors group"
-                    >
+                    <tr key={dp.category} className="hover:bg-slate-800/30 transition-colors">
                       <td className="px-5 py-3 text-[11px] text-slate-600 font-mono">{rowNum}</td>
                       <td className="px-4 py-3 text-slate-200 text-xs max-w-xs">
-                        <span className="line-clamp-2 leading-relaxed" title={dp.category}>
-                          {dp.category}
-                        </span>
+                        <span className="line-clamp-2 leading-relaxed" title={dp.category}>{dp.category}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-semibold text-xs">
                         <span className={isCurrency && operation !== 'count' ? 'text-emerald-400' : 'text-slate-200'}>
                           {formatValue(dp.value)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right text-xs text-slate-300 font-mono">
-                        {formatNumber(dp.recordCount)}
-                      </td>
+                      <td className="px-4 py-3 text-right text-xs text-slate-300 font-mono">{formatNumber(dp.recordCount)}</td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <div className="hidden sm:block w-16 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
-                            <div
-                              className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                              style={{ width: `${Math.min(pct, 100)}%` }}
-                            />
+                            <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
                           </div>
-                          <span className="text-[11px] text-slate-400 font-mono w-12 text-right">
-                            {pct.toFixed(1)}%
-                          </span>
+                          <span className="text-[11px] text-slate-400 font-mono w-12 text-right">{pct.toFixed(1)}%</span>
                         </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-              {/* Grand Total Row */}
               <tfoot>
                 <tr className="bg-slate-900/80 border-t-2 border-indigo-800/50">
                   <td className="px-5 py-3"></td>
                   <td className="px-4 py-3 text-xs font-bold text-indigo-300 uppercase tracking-wide">
-                    {searched.length < (queryResult?.data.length ?? 0)
-                      ? `TOTAL FILTRADO (${searched.length} de ${queryResult?.totalGroups ?? 0})`
+                    {searched.length < queryResult.data.length
+                      ? `TOTAL FILTRADO (${searched.length} de ${queryResult.totalGroups})`
                       : `TOTAL GENERAL (${searched.length} grupos)`}
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-xs text-indigo-300">
-                    {operation !== 'count'
-                      ? (isCurrency ? formatCurrency(grandTotalValue) : formatNumber(grandTotalValue))
-                      : '—'}
+                    {operation !== 'count' ? (isCurrency ? formatCurrency(grandTotalValue) : formatNumber(grandTotalValue)) : '—'}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-xs text-indigo-300">
-                    {formatNumber(grandTotalRecords)}
-                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-xs text-indigo-300">{formatNumber(grandTotalRecords)}</td>
                   <td className="px-5 py-3 text-right text-xs font-bold text-indigo-300">100%</td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          {/* ── Pagination Controls ── */}
+          {/* Pagination */}
           <div className="px-5 py-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/40">
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">Filas por página:</span>
@@ -433,32 +423,17 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
                 className="bg-slate-900 text-slate-300 text-xs rounded-md px-2 py-1 border border-slate-800 focus:outline-none focus:border-indigo-500"
               >
-                {PAGE_SIZE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
+                {PAGE_SIZE_OPTIONS.map((s) => (<option key={s} value={s}>{s}</option>))}
               </select>
               <span className="text-xs text-slate-500">
                 {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, sorted.length)} de {formatNumber(sorted.length)}
               </span>
             </div>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage(1)}
-                disabled={page === 1}
-                className="px-2 py-1 rounded text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                title="Primera página"
-              >
-                «
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-              >
+              <button onClick={() => setPage(1)} disabled={page === 1} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed">«</button>
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-
-              {/* Page number pills */}
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 let p: number;
                 if (totalPages <= 5) p = i + 1;
@@ -466,39 +441,19 @@ export function AnalyticsDataTableCard({ records, isLoading = false }: Analytics
                 else if (page >= totalPages - 2) p = totalPages - 4 + i;
                 else p = page - 2 + i;
                 return (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`w-7 h-7 rounded text-xs font-medium transition-all ${
-                      p === page
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                    }`}
-                  >
-                    {p}
-                  </button>
+                  <button key={p} onClick={() => setPage(p)}
+                    className={`w-7 h-7 rounded text-xs font-medium transition-all ${p === page ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}
+                  >{p}</button>
                 );
               })}
-
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-              >
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed">
                 <ChevronRight className="w-4 h-4" />
               </button>
-              <button
-                onClick={() => setPage(totalPages)}
-                disabled={page === totalPages}
-                className="px-2 py-1 rounded text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                title="Última página"
-              >
-                »
-              </button>
+              <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="px-2 py-1 rounded text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed">»</button>
             </div>
           </div>
         </>
       )}
     </Card>
   );
-}
+});

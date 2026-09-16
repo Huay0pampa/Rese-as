@@ -12,7 +12,6 @@ export function useFileUpload() {
     progress: 0,
     metadata: null,
     qualityReport: null,
-    rawRecords: [],
     normalizedRecords: [],
     errorMessage: null,
   });
@@ -64,7 +63,6 @@ export function useFileUpload() {
         progress: 100,
         metadata: result.metadata,
         qualityReport: result.qualityReport,
-        rawRecords: result.rawRecords,
         normalizedRecords: result.normalizedRecords,
         errorMessage: null,
       });
@@ -89,7 +87,6 @@ export function useFileUpload() {
       progress: 0,
       metadata: null,
       qualityReport: null,
-      rawRecords: [],
       normalizedRecords: [],
       errorMessage: null,
     });
@@ -101,3 +98,4 @@ export function useFileUpload() {
     resetUpload,
   };
 }
+

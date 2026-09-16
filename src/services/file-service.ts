@@ -24,6 +24,13 @@ export class FileService {
         )}`
       );
     }
+
+    const MAX_FILE_SIZE_MB = 50;
+    const maxSizeBytes = MAX_FILE_SIZE_MB * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      throw new Error(`El archivo excede el tamaño máximo permitido de ${MAX_FILE_SIZE_MB}MB.`);
+    }
+
     return await processExportFile(file);
   }
 }

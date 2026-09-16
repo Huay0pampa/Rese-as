@@ -80,7 +80,7 @@ export function FileUploader({
             <p className="text-xs text-slate-400 mt-1">
               Soporta archivos <span className="font-semibold text-slate-300">.xlsx</span>,{' '}
               <span className="font-semibold text-slate-300">.xls</span> o{' '}
-              <span className="font-semibold text-slate-300">.csv</span> sin límite de filas
+              <span className="font-semibold text-slate-300">.csv</span> (Máx 50MB)
             </p>
           </div>
 

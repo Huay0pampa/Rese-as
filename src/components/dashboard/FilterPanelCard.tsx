@@ -8,6 +8,7 @@ import {
 } from '@/types';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
+import { ExportFormat } from '@/lib/export/exporter';
 import {
   Filter,
   RotateCcw,
@@ -20,6 +21,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Download,
 } from 'lucide-react';
 import { formatNumber } from '@/utils/formatters';
 
@@ -32,9 +34,10 @@ export interface FilterPanelCardProps {
   onUpdateFilters: (newFilters: ActiveFilters) => void;
   onResetFilters: () => void;
   onRemoveBadge: (badge: ActiveFilterBadge) => void;
+  onExportDataset?: (format: ExportFormat) => void;
 }
 
-export function FilterPanelCard({
+export const FilterPanelCard = React.memo(function FilterPanelCard({
   filterOptions,
   activeFilters,
   activeBadges,
@@ -43,6 +46,7 @@ export function FilterPanelCard({
   onUpdateFilters,
   onResetFilters,
   onRemoveBadge,
+  onExportDataset,
 }: FilterPanelCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -135,15 +139,42 @@ export function FilterPanelCard({
           </div>
         </div>
 
-        {/* Counter Badge & Reset Button */}
-        <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end">
-          <div className="bg-slate-900/90 px-3.5 py-1.5 rounded-lg border border-slate-800 text-xs">
+        {/* Counter Badge, Export & Reset Buttons */}
+        <div className="flex items-center flex-wrap space-x-2 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
             <span className="text-slate-400">Mostrando: </span>
             <span className="font-bold text-indigo-400">
               {formatNumber(filteredRecordsCount)}
             </span>
             <span className="text-slate-500"> / {formatNumber(totalRecordsCount)} ({percentage}%)</span>
           </div>
+
+          {onExportDataset && filteredRecordsCount > 0 && (
+            <div className="flex items-center gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+              <button
+                onClick={() => onExportDataset('xlsx')}
+                title="Exportar datos filtrados a Excel"
+                className="px-2 py-1 rounded text-xs font-medium text-emerald-400 hover:bg-emerald-950/50 border border-emerald-800/50 transition-colors flex items-center gap-1"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Excel</span>
+              </button>
+              <button
+                onClick={() => onExportDataset('csv')}
+                title="Exportar datos filtrados a CSV"
+                className="px-2 py-1 rounded text-xs font-medium text-cyan-400 hover:bg-cyan-950/50 border border-cyan-800/50 transition-colors"
+              >
+                CSV
+              </button>
+              <button
+                onClick={() => onExportDataset('json')}
+                title="Exportar datos filtrados a JSON"
+                className="px-2 py-1 rounded text-xs font-medium text-amber-400 hover:bg-amber-950/50 border border-amber-800/50 transition-colors"
+              >
+                JSON
+              </button>
+            </div>
+          )}
 
           {activeBadges.length > 0 && (
             <button
@@ -372,4 +403,4 @@ export function FilterPanelCard({
       )}
     </Card>
   );
-}
+});

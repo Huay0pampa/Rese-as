@@ -24,11 +24,7 @@ export default function RootLayout({
   return (
     <html lang="es" className="dark">
       <body className={`${inter.variable} antialiased min-h-screen flex flex-col bg-slate-950 text-slate-100`}>
-        <Header />
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {children}
-        </main>
-        <Footer />
+        {children}
       </body>
     </html>
   );

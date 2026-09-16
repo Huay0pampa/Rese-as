@@ -124,7 +124,6 @@ export interface FileProcessingState {
   progress: number; // 0 to 100
   metadata: FileMetadata | null;
   qualityReport: DataQualityReport | null;
-  rawRecords: RawExportRecord[];
   normalizedRecords: NormalizedExportRecord[];
   errorMessage: string | null;
 }

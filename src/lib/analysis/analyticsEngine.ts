@@ -36,7 +36,6 @@ const OPERATION_LABELS: Record<AnalysisOperation, string> = {
 interface Accumulator {
   category: string;
   sortKey: string | number;
-  values: number[];
   sum: number;
   min: number;
   max: number;
@@ -46,6 +45,7 @@ interface Accumulator {
 /**
  * Generic, data-driven analytics aggregation engine.
  * Computes dynamic groupings, mathematical operations, and chronological sorting without hardcoded values.
+ * Optimized: uses incremental accumulators (no per-record value arrays) to minimize memory usage.
  */
 export function executeAnalyticsQuery(
   records: NormalizedExportRecord[],
@@ -80,7 +80,8 @@ export function executeAnalyticsQuery(
 
   const map = new Map<string, Accumulator>();
 
-  records.forEach((rec) => {
+  for (let i = 0, len = records.length; i < len; i++) {
+    const rec = records[i];
     // 1. Determine category key and sort key
     let category = '';
     let sortKey: string | number = '';
@@ -130,13 +131,12 @@ export function executeAnalyticsQuery(
         break;
     }
 
-    // 3. Accumulate in Map
+    // 3. Accumulate in Map (incremental — no value arrays)
     let acc = map.get(category);
     if (!acc) {
       acc = {
         category,
         sortKey,
-        values: [],
         sum: 0,
         min: val,
         max: val,
@@ -145,12 +145,11 @@ export function executeAnalyticsQuery(
       map.set(category, acc);
     }
 
-    acc.values.push(val);
     acc.sum += val;
     acc.count++;
     if (val < acc.min) acc.min = val;
     if (val > acc.max) acc.max = val;
-  });
+  }
 
   // 4. Calculate final operated value per category
   let grandTotal = 0;

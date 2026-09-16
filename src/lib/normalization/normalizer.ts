@@ -200,21 +200,52 @@ function getFieldValue(record: RawExportRecord, headerName: string): unknown {
 /**
  * Normalizes raw records into strongly-typed NormalizedExportRecord instances.
  * Computes DateDetails, parses numbers, and records Quality Flags without dropping invalid data.
+ *
+ * Performance: Pre-computes a case-insensitive header key map once per batch,
+ * avoiding O(n×m) Object.keys().find() calls per record.
  */
 export function normalizeExportRecords(
   rawRecords: RawExportRecord[]
 ): NormalizedExportRecord[] {
+  if (rawRecords.length === 0) return [];
+
+  // Pre-compute case-insensitive header key map ONCE for all records
+  // This converts 8 × N linear scans to 8 × N O(1) Map lookups
+  const sampleRecord = rawRecords[0];
+  const headerKeyMap = new Map<string, string>();
+  for (const key of Object.keys(sampleRecord)) {
+    headerKeyMap.set(key.trim().toLowerCase(), key);
+  }
+
+  // Pre-resolve official header keys once
+  const keyDescripcion = headerKeyMap.get('descripcion de la partida aduanera');
+  const keyFecha = headerKeyMap.get('fecha');
+  const keyExportador = headerKeyMap.get('exportador');
+  const keyQty1 = headerKeyMap.get('qty 1');
+  const keyFobTot = headerKeyMap.get('u$ fob tot');
+  const keyFobUnd2 = headerKeyMap.get('u$ fob und 2');
+  const keyPaisDestino = headerKeyMap.get('pais de destino');
+  const keyCanal = headerKeyMap.get('canal');
+
+  // Pre-compute set of official header keys (lowered) for extra field detection
+  const officialKeysLower = new Set(
+    OFFICIAL_EXCEL_HEADERS.map((h) => h.toLowerCase())
+  );
+
+  // Unique batch ID prefix (once, not per record)
+  const batchId = Date.now().toString(36);
+
   return rawRecords.map((raw, idx) => {
-    const descripcionPartida = cleanText(getFieldValue(raw, 'Descripcion de la Partida Aduanera'));
-    const exportador = cleanText(getFieldValue(raw, 'Exportador'));
-    const paisDestino = cleanText(getFieldValue(raw, 'Pais de Destino'));
-    const canal = cleanText(getFieldValue(raw, 'Canal'));
+    const descripcionPartida = cleanText(keyDescripcion ? raw[keyDescripcion] : undefined);
+    const exportador = cleanText(keyExportador ? raw[keyExportador] : undefined);
+    const paisDestino = cleanText(keyPaisDestino ? raw[keyPaisDestino] : undefined);
+    const canal = cleanText(keyCanal ? raw[keyCanal] : undefined);
 
-    const dateDetails = parseDateDateilsOrFallback(getFieldValue(raw, 'Fecha'));
+    const dateDetails = parseDateDetails(keyFecha ? raw[keyFecha] : undefined);
 
-    const qtyParsed = parseNumericDetails(getFieldValue(raw, 'Qty 1'));
-    const fobTotParsed = parseNumericDetails(getFieldValue(raw, 'U$ FOB Tot'));
-    const fobUnd2Parsed = parseNumericDetails(getFieldValue(raw, 'U$ FOB Und 2'));
+    const qtyParsed = parseNumericDetails(keyQty1 ? raw[keyQty1] : undefined);
+    const fobTotParsed = parseNumericDetails(keyFobTot ? raw[keyFobTot] : undefined);
+    const fobUnd2Parsed = parseNumericDetails(keyFobUnd2 ? raw[keyFobUnd2] : undefined);
 
     const warnings: string[] = [];
 
@@ -243,19 +274,19 @@ export function normalizeExportRecords(
       warnings,
     };
 
-    // Collect extra non-official fields
-    const extraFields: Record<string, unknown> = {};
-    Object.keys(raw).forEach((key) => {
-      const isOfficial = OFFICIAL_EXCEL_HEADERS.some(
-        (h) => h.toLowerCase() === key.trim().toLowerCase()
-      );
-      if (!isOfficial) {
+    // Collect extra non-official fields (using pre-computed set)
+    let extraFields: Record<string, unknown> | undefined;
+    const keys = Object.keys(raw);
+    for (let k = 0; k < keys.length; k++) {
+      const key = keys[k];
+      if (!officialKeysLower.has(key.trim().toLowerCase())) {
+        if (!extraFields) extraFields = {};
         extraFields[key.trim()] = raw[key];
       }
-    });
+    }
 
     return {
-      id: `rec-${idx + 1}-${Date.now().toString(36)}`,
+      id: `rec-${idx + 1}-${batchId}`,
       descripcionPartida: descripcionPartida || '(Sin Descripción)',
       fecha: dateDetails.isoDate || '',
       dateDetails,
@@ -266,11 +297,8 @@ export function normalizeExportRecords(
       paisDestino: paisDestino || '(Sin Destino)',
       canal: canal || 'N/A',
       qualityFlags,
-      extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
+      extraFields,
     };
   });
 }
 
-function parseDateDateilsOrFallback(val: unknown): DateDetails {
-  return parseDateDetails(val);
-}

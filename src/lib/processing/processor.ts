@@ -14,7 +14,6 @@ export interface ProcessedPipelineResult {
   metadata: FileMetadata;
   validation: ValidationResult;
   qualityReport: DataQualityReport;
-  rawRecords: RawExportRecord[];
   normalizedRecords: NormalizedExportRecord[];
 }
 
@@ -47,7 +46,6 @@ export async function processExportFile(file: File): Promise<ProcessedPipelineRe
     metadata,
     validation,
     qualityReport,
-    rawRecords,
     normalizedRecords,
   };
 }

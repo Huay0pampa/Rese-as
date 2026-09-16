@@ -72,6 +72,13 @@ export function filterExportRecords(
   records: NormalizedExportRecord[],
   filters: ActiveFilters
 ): NormalizedExportRecord[] {
+  // Convert arrays to Sets for O(1) lookups
+  const yearsSet = new Set(filters.selectedYears);
+  const exportersSet = new Set(filters.selectedExporters);
+  const destinationsSet = new Set(filters.selectedDestinations);
+  const headingsSet = new Set(filters.selectedCustomsHeadings);
+  const channelsSet = new Set(filters.selectedChannels);
+
   return records.filter((rec) => {
     // 1. Search Query Match (Free text search across description, exporter, destination, channel)
     if (filters.searchQuery) {
@@ -84,36 +91,36 @@ export function filterExportRecords(
     }
 
     // 2. Year Filter
-    if (filters.selectedYears.length > 0) {
-      if (!rec.dateDetails.year || !filters.selectedYears.includes(rec.dateDetails.year)) {
+    if (yearsSet.size > 0) {
+      if (!rec.dateDetails.year || !yearsSet.has(rec.dateDetails.year)) {
         return false;
       }
     }
 
     // 3. Exporter Filter
-    if (filters.selectedExporters.length > 0) {
-      if (!filters.selectedExporters.includes(rec.exportador)) {
+    if (exportersSet.size > 0) {
+      if (!exportersSet.has(rec.exportador)) {
         return false;
       }
     }
 
     // 4. Destination Country Filter
-    if (filters.selectedDestinations.length > 0) {
-      if (!filters.selectedDestinations.includes(rec.paisDestino)) {
+    if (destinationsSet.size > 0) {
+      if (!destinationsSet.has(rec.paisDestino)) {
         return false;
       }
     }
 
     // 5. Customs Heading Filter
-    if (filters.selectedCustomsHeadings.length > 0) {
-      if (!filters.selectedCustomsHeadings.includes(rec.descripcionPartida)) {
+    if (headingsSet.size > 0) {
+      if (!headingsSet.has(rec.descripcionPartida)) {
         return false;
       }
     }
 
     // 6. Channel Filter
-    if (filters.selectedChannels.length > 0) {
-      if (!filters.selectedChannels.includes(rec.canal)) {
+    if (channelsSet.size > 0) {
+      if (!channelsSet.has(rec.canal)) {
         return false;
       }
     }
