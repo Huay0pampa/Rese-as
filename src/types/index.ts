@@ -8,6 +8,7 @@ export interface Tenant {
   name: string;
   slug: string;
   google_review_url: string;
+  place_id?: string | null;
   whatsapp_number?: string | null;
   instagram_url?: string | null;
   mode: TenantMode;
@@ -18,6 +19,15 @@ export interface Tenant {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface GooglePlaceResult {
+  place_id: string;
+  name: string;
+  formatted_address: string;
+  rating?: number;
+  user_ratings_total?: number;
+  review_url: string;
 }
 
 export interface SuperAdminMetrics {

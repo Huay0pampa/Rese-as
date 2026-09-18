@@ -1,13 +1,14 @@
-'use client';
+﻿"use client";
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { generateSlug, createGoogleSearchUrl, validateGoogleReviewUrl } from '@/lib/google-url';
-import { saveTenant } from '@/lib/tenant-service';
-import { QrDisplay } from '@/components/qr-display';
-import { PrintKitModal } from '@/components/print-kit-modal';
-import { InstagramIcon } from '@/components/icons';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { generateSlug, createGoogleSearchUrl } from "@/lib/google-url";
+import { saveTenant } from "@/lib/tenant-service";
+import { QrDisplay } from "@/components/qr-display";
+import { PrintKitModal } from "@/components/print-kit-modal";
+import { InstagramIcon } from "@/components/icons";
+import { GooglePlaceResult } from "@/types";
 import {
   Sparkles,
   Building,
@@ -21,50 +22,103 @@ import {
   Zap,
   ArrowRight,
   Globe,
-} from 'lucide-react';
-import confetti from 'canvas-confetti';
+  MapPin,
+  Loader2,
+  Search,
+} from "lucide-react";
+import confetti from "canvas-confetti";
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // Business Name is the only primary input
-  const [businessName, setBusinessName] = useState('Chifa Jumbo');
-  
-  // Advanced optional inputs (collapsed by default)
+  // Primary input
+  const [businessName, setBusinessName] = useState("");
+
+  // Places search state
+  const [searchResults, setSearchResults] = useState<GooglePlaceResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState<GooglePlaceResult | null>(null);
+  const [searchFallback, setSearchFallback] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Advanced optional inputs (collapsed)
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [customGoogleUrl, setCustomGoogleUrl] = useState('');
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [instagramUrl, setInstagramUrl] = useState('');
-  
-  // Status states
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
+
+  // Status
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPrintKit, setShowPrintKit] = useState(false);
 
-  const slug = generateSlug(businessName || 'mi-negocio');
-  const autowiredUrl = customGoogleUrl.trim() || createGoogleSearchUrl(businessName || 'Mi Negocio');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Submit Handler: Saves immediately with Zero Friction
+  const slug = generateSlug(businessName || "mi-negocio");
+
+  // The effective Google URL: use selected place or fallback
+  const effectiveGoogleUrl = selectedPlace
+    ? selectedPlace.review_url
+    : createGoogleSearchUrl(businessName || "Mi Negocio");
+
+  // Auto-search with debounce when user types
+  const runSearch = useCallback(async (name: string) => {
+    if (name.trim().length < 3) {
+      setSearchResults([]);
+      setSelectedPlace(null);
+      setHasSearched(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setSelectedPlace(null);
+
+    try {
+      const res = await fetch("/api/find-place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: name.trim() }),
+      });
+      const data = await res.json();
+      setSearchResults(data.results || []);
+      setSearchFallback(data.fallback || false);
+      setHasSearched(true);
+
+      // Auto-select first result if only one result
+      if (!data.fallback && data.results?.length === 1) {
+        setSelectedPlace(data.results[0]);
+      }
+    } catch {
+      setSearchResults([]);
+      setSearchFallback(true);
+      setHasSearched(true);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      runSearch(businessName);
+    }, 700);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [businessName, runSearch]);
+
+  const handleSelectPlace = (place: GooglePlaceResult) => {
+    setSelectedPlace(place);
+    setSearchResults([]);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
     const cleanName = businessName.trim();
     if (!cleanName) {
-      setErrorMessage('Por favor escribe el nombre de tu negocio.');
+      setErrorMessage("Por favor escribe el nombre de tu negocio.");
       return;
-    }
-
-    let finalGoogleUrl = customGoogleUrl.trim();
-    if (finalGoogleUrl) {
-      const val = validateGoogleReviewUrl(finalGoogleUrl);
-      if (!val.isValid) {
-        setErrorMessage(val.errorMessage || 'El enlace de Google no es válido.');
-        return;
-      }
-      finalGoogleUrl = val.normalizedUrl;
-    } else {
-      finalGoogleUrl = createGoogleSearchUrl(cleanName);
     }
 
     setIsSaving(true);
@@ -72,22 +126,22 @@ export default function OnboardingPage() {
       const saved = await saveTenant({
         name: cleanName,
         slug,
-        google_review_url: finalGoogleUrl,
+        google_review_url: effectiveGoogleUrl,
+        place_id: selectedPlace?.place_id || null,
         whatsapp_number: whatsappNumber.trim() || null,
         instagram_url: instagramUrl.trim() || null,
-        mode: 'DIRECT',
+        mode: "DIRECT",
         is_active: true,
       });
 
       try {
-        confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 } });
+        confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 } });
       } catch {}
 
-      // Navigate to dashboard
       router.push(`/dashboard?tenant_id=${saved.id}`);
     } catch (err) {
-      console.error('Error saving tenant:', err);
-      setErrorMessage('Error al registrar negocio. Intenta nuevamente.');
+      console.error("Error saving tenant:", err);
+      setErrorMessage("Error al registrar negocio. Intenta nuevamente.");
     } finally {
       setIsSaving(false);
     }
@@ -111,10 +165,10 @@ export default function OnboardingPage() {
             <span>Onboarding Instantáneo</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white">
-            Generador de QR Dinámico para Google Maps
+            Generador de QR Dinámico — Link Directo a Google Reviews ⭐⭐⭐⭐⭐
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Escribe el nombre de tu local y el sistema generará tu QR de reseñas listo para imprimir.
+            Escribe el nombre de tu local. El sistema busca tu negocio en Google y genera el QR que abre el formulario de reseñas directamente.
           </p>
         </div>
       </div>
@@ -122,17 +176,21 @@ export default function OnboardingPage() {
       {/* 2-Column Grid */}
       <div className="max-w-4xl mx-auto w-full my-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Form */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className="lg:col-span-7 space-y-5">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Single Business Name Input */}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Business Name Input */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
-                  1. Nombre de tu Negocio / Comercio
+                  Nombre de tu Negocio / Comercio
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-blue-400">
-                    <Building className="w-5 h-5" />
+                    {isSearching ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Building className="w-5 h-5" />
+                    )}
                   </div>
                   <input
                     type="text"
@@ -143,19 +201,86 @@ export default function OnboardingPage() {
                   />
                 </div>
 
-                {/* Auto Detection Pill */}
-                <div className="mt-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5 text-xs text-emerald-300">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-                  <div>
-                    <span className="font-bold">Google Maps Autovinculado con éxito</span>
-                    <span className="block text-[11px] text-slate-400 mt-0.5 font-mono truncate max-w-sm">
-                      Destino: {autowiredUrl}
-                    </span>
+                {/* Search Results Dropdown */}
+                {searchResults.length > 0 && !selectedPlace && (
+                  <div className="mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                    <div className="px-4 py-2 border-b border-slate-800 flex items-center gap-2 text-xs text-slate-400">
+                      <Search className="w-3.5 h-3.5" />
+                      <span>Selecciona tu negocio para el link directo de reseñas:</span>
+                    </div>
+                    {searchResults.map((place) => (
+                      <button
+                        key={place.place_id}
+                        type="button"
+                        onClick={() => handleSelectPlace(place)}
+                        className="w-full text-left px-4 py-3.5 hover:bg-slate-800 border-b border-slate-800/50 last:border-0 transition-colors group"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                            <MapPin className="w-4 h-4 text-blue-400" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors truncate">
+                              {place.name}
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">{place.formatted_address}</p>
+                            {place.rating && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                                <span className="text-xs text-amber-400 font-semibold">{place.rating}</span>
+                                {place.user_ratings_total && (
+                                  <span className="text-xs text-slate-500">({place.user_ratings_total.toLocaleString()} reseñas)</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                </div>
+                )}
+
+                {/* Status Pill */}
+                {selectedPlace ? (
+                  <div className="mt-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-300">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-emerald-300">✅ Negocio encontrado — Link directo a reseñas activado</span>
+                      <span className="block text-[11px] text-slate-400 mt-0.5 truncate max-w-sm">{selectedPlace.formatted_address}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedPlace(null); setHasSearched(false); }}
+                        className="text-[11px] text-blue-400 hover:text-blue-300 mt-1 underline"
+                      >
+                        ¿No es este? Cambiar selección
+                      </button>
+                    </div>
+                  </div>
+                ) : hasSearched && !isSearching ? (
+                  searchFallback ? (
+                    <div className="mt-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-300">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Sin API Key de Google configurada</span>
+                        <span className="block text-[11px] text-slate-400 mt-0.5">
+                          El QR usará búsqueda general de Google Maps. Para link directo a reseñas, configura{" "}
+                          <code className="bg-slate-800 px-1 rounded">GOOGLE_PLACES_API_KEY</code> en Vercel.
+                        </span>
+                      </div>
+                    </div>
+                  ) : searchResults.length === 0 && businessName.trim().length >= 3 ? (
+                    <div className="mt-3 p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700 flex items-start gap-2.5 text-xs text-slate-400">
+                      <Globe className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-medium">No se encontró tu negocio en Google</span>
+                        <span className="block mt-0.5">El QR usará búsqueda de Google Maps. Puedes pegar el link exacto en Opciones Avanzadas.</span>
+                      </div>
+                    </div>
+                  ) : null
+                ) : businessName.trim().length >= 3 && !isSearching ? null : null}
               </div>
 
-              {/* Collapsed Advanced Options (WhatsApp / Custom URL) */}
+              {/* Collapsed Advanced Options */}
               <div className="border border-slate-800 rounded-2xl p-4 bg-slate-950/40">
                 <button
                   type="button"
@@ -164,26 +289,13 @@ export default function OnboardingPage() {
                 >
                   <span className="flex items-center gap-2">
                     <Globe className="w-3.5 h-3.5" />
-                    <span>Opciones avanzadas (WhatsApp / Enlace manual)</span>
+                    <span>Opciones avanzadas (WhatsApp / Link Manual de Google)</span>
                   </span>
                   {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
 
                 {showAdvanced && (
                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-4 animate-in fade-in">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Enlace específico de Google Business (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        value={customGoogleUrl}
-                        onChange={(e) => setCustomGoogleUrl(e.target.value)}
-                        placeholder="https://g.page/r/.../review (Dejar vacío para autovinculación)"
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
-                      />
-                    </div>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] text-slate-400 font-medium mb-1">
@@ -225,7 +337,7 @@ export default function OnboardingPage() {
                 )}
               </div>
 
-              {/* Error Display */}
+              {/* Error */}
               {errorMessage && (
                 <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -233,15 +345,17 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              {/* 1-Click Action Button */}
+              {/* Submit */}
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || !businessName.trim()}
                 className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-black text-base shadow-xl shadow-blue-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Sparkles className="w-5 h-5 text-amber-300" />
-                <span>{isSaving ? 'Activando Negocio...' : 'Generar y Activar QR en 1 Clic 🚀'}</span>
-                <ArrowRight className="w-5 h-5 ml-1" />
+                {isSaving ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /><span>Activando Negocio...</span></>
+                ) : (
+                  <><Sparkles className="w-5 h-5 text-amber-300" /><span>Generar y Activar QR de Reseñas 🚀</span><ArrowRight className="w-5 h-5 ml-1" /></>
+                )}
               </button>
             </form>
           </div>
@@ -250,14 +364,19 @@ export default function OnboardingPage() {
         {/* Right Column: Live QR Preview */}
         <div className="lg:col-span-5">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col items-center">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 mb-1 flex items-center gap-2">
               <Star className="w-4 h-4 text-amber-400" />
               Vista Previa en Vivo del QR
             </h3>
+            {selectedPlace && (
+              <p className="text-[11px] text-emerald-400 font-semibold mb-3">
+                ⭐ Abre formulario de 5 estrellas directamente
+              </p>
+            )}
 
             <QrDisplay
               slug={slug}
-              businessName={businessName || 'Tu Negocio'}
+              businessName={businessName || "Tu Negocio"}
               showDownloadOptions={true}
               onOpenPrintKit={() => setShowPrintKit(true)}
             />
@@ -269,13 +388,13 @@ export default function OnboardingPage() {
       <PrintKitModal
         isOpen={showPrintKit}
         onClose={() => setShowPrintKit(false)}
-        tenantName={businessName || 'Mi Negocio'}
+        tenantName={businessName || "Mi Negocio"}
         slug={slug}
       />
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full text-center text-xs text-slate-500 pt-6 pb-2">
-        SaaS B2B de Reseñas y Fidelización en Tiempo Real &bull; Diseñado con Next.js Edge & Supabase
+        SaaS B2B de Reseñas &bull; Motor de QR Dinámico con Google Places API
       </footer>
     </main>
   );
