@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import QRCode from 'qrcode';
-import { Download, Copy, Check, ExternalLink, Sparkles, RefreshCw, Printer } from 'lucide-react';
+import { Download, Copy, Check, ExternalLink, RefreshCw, Printer } from 'lucide-react';
 
 interface QrDisplayProps {
   slug: string;
@@ -24,25 +24,36 @@ export function QrDisplay({
   const [svgString, setSvgString] = useState<string>('');
   const [pngDataUrl, setPngDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
-  const [baseUrl, setBaseUrl] = useState('');
+  
+  // Always initialize with absolute window origin in browser
+  const [baseUrl, setBaseUrl] = useState<string>(() => {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return process.env.NEXT_PUBLIC_APP_URL || '';
+  });
+
   const [color, setColor] = useState(accentColor);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin;
-      // In browser, window.location.origin is always the exact live domain
-      setBaseUrl(origin);
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      setBaseUrl(window.location.origin);
     }
   }, []);
 
-  const redirectionUrl = `${baseUrl}/r/${slug}`;
+  const currentHost = baseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+  const redirectionUrl = currentHost ? `${currentHost.replace(/\/$/, '')}/r/${slug}` : `/r/${slug}`;
 
   useEffect(() => {
     async function generateQRCodes() {
+      // Must have a full absolute URL for phone cameras to scan properly
+      if (!slug || !currentHost) return;
+
+      const fullAbsoluteTarget = `${currentHost.replace(/\/$/, '')}/r/${slug}`;
+
       try {
-        // 1. Generate SVG format
-        const svg = await QRCode.toString(redirectionUrl, {
+        // 1. Generate SVG format with full absolute domain URL
+        const svg = await QRCode.toString(fullAbsoluteTarget, {
           type: 'svg',
           color: {
             dark: color,
@@ -54,7 +65,7 @@ export function QrDisplay({
         setSvgString(svg);
 
         // 2. Generate Ultra-High Resolution PNG (1024x1024 for crisp print quality)
-        const png = await QRCode.toDataURL(redirectionUrl, {
+        const png = await QRCode.toDataURL(fullAbsoluteTarget, {
           width: 1024,
           margin: 2,
           color: {
@@ -69,10 +80,8 @@ export function QrDisplay({
       }
     }
 
-    if (slug) {
-      generateQRCodes();
-    }
-  }, [redirectionUrl, slug, color]);
+    generateQRCodes();
+  }, [currentHost, slug, color]);
 
   const handleCopyLink = () => {
     if (navigator.clipboard) {
@@ -145,8 +154,8 @@ export function QrDisplay({
 
         {/* Dynamic Link Pill */}
         <div className="mt-4 w-full bg-slate-50 border border-slate-200/80 rounded-xl p-2 flex items-center justify-between gap-2 text-xs">
-          <div className="truncate font-mono text-slate-600 select-all font-medium pl-1">
-            {redirectionUrl || `/r/${slug}`}
+          <div className="truncate font-mono text-slate-600 select-all font-medium pl-1 text-[11px]">
+            {redirectionUrl}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button

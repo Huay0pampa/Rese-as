@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { validateGoogleReviewUrl, generateSlug, createGoogleSearchUrl } from '@/lib/google-url';
@@ -13,16 +13,12 @@ import {
   Building,
   Link as LinkIcon,
   AlertCircle,
-  ArrowRight,
-  Printer,
   Save,
   MessageCircle,
-  HelpCircle,
   Star,
   ChevronLeft,
   ChevronDown,
   ChevronUp,
-  MapPin,
   CheckCircle2,
   Zap,
 } from 'lucide-react';
@@ -32,7 +28,7 @@ export default function OnboardingPage() {
   const router = useRouter();
 
   // 1-Click Form state
-  const [businessName, setBusinessName] = useState('El Velero');
+  const [businessName, setBusinessName] = useState('Chifa Jumbo');
   const [googleUrl, setGoogleUrl] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
@@ -42,7 +38,6 @@ export default function OnboardingPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
-  const [isGenerated, setIsGenerated] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showPrintKit, setShowPrintKit] = useState(false);
   const [showHelpGuide, setShowHelpGuide] = useState(false);
@@ -52,20 +47,21 @@ export default function OnboardingPage() {
   // Auto-fill Google Review destination if not manually specified
   const effectiveGoogleUrl = googleUrl.trim() || createGoogleSearchUrl(businessName || 'Mi Negocio');
 
-  // Step 1: Validate & Generate Dynamic QR
-  const handleValidateAndGenerate = (e: React.FormEvent) => {
+  // 1-Click Submit: Saves business & activates QR immediately
+  const handleSaveAndActivate = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
     setValidationWarning(null);
 
-    if (!businessName.trim()) {
+    const cleanName = businessName.trim();
+    if (!cleanName) {
       setValidationError('Por favor ingresa el nombre de tu negocio.');
       return;
     }
 
-    // If manual URL provided, validate format
-    if (googleUrl.trim()) {
-      const validation = validateGoogleReviewUrl(googleUrl.trim());
+    let finalGoogleUrl = googleUrl.trim();
+    if (finalGoogleUrl) {
+      const validation = validateGoogleReviewUrl(finalGoogleUrl);
       if (!validation.isValid) {
         setValidationError(validation.errorMessage || 'Enlace de Google Reviews no válido.');
         return;
@@ -73,37 +69,31 @@ export default function OnboardingPage() {
       if (validation.warningMessage) {
         setValidationWarning(validation.warningMessage);
       }
-      setGoogleUrl(validation.normalizedUrl);
+      finalGoogleUrl = validation.normalizedUrl;
+    } else {
+      // Auto-generated Google Maps review search URL
+      finalGoogleUrl = createGoogleSearchUrl(cleanName);
     }
 
-    setIsGenerated(true);
-
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-      });
-    } catch {
-      // confetti non-blocking
-    }
-  };
-
-  // Step 2: Save Tenant & Persist to Supabase / Storage
-  const handleSaveConfiguration = async () => {
     setIsSaving(true);
     try {
-      const finalUrl = googleUrl.trim() || createGoogleSearchUrl(businessName.trim());
-
       const saved = await saveTenant({
-        name: businessName.trim() || 'Mi Negocio',
+        name: cleanName,
         slug,
-        google_review_url: finalUrl,
+        google_review_url: finalGoogleUrl,
         whatsapp_number: whatsappNumber.trim() || null,
         instagram_url: instagramUrl.trim() || null,
         mode,
         is_active: true,
       });
+
+      try {
+        confetti({
+          particleCount: 90,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      } catch {}
 
       router.push(`/dashboard?tenant_id=${saved.id}`);
     } catch (err) {
@@ -147,7 +137,7 @@ export default function OnboardingPage() {
         {/* Left Column: 1-Click Form */}
         <div className="lg:col-span-7 space-y-6">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-            <form onSubmit={handleValidateAndGenerate} className="space-y-6">
+            <form onSubmit={handleSaveAndActivate} className="space-y-6">
               {/* The ONLY Required Field: Business Name */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
@@ -161,11 +151,8 @@ export default function OnboardingPage() {
                     type="text"
                     required
                     value={businessName}
-                    onChange={(e) => {
-                      setBusinessName(e.target.value);
-                      setIsGenerated(true);
-                    }}
-                    placeholder="Ej: El Velero, Café Bistro, Don Tito San Isidro"
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    placeholder="Ej: Chifa Jumbo, Don Tito San Isidro, La Terraza"
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border border-blue-500/50 rounded-2xl text-white placeholder-slate-500 text-base focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all font-semibold shadow-inner"
                   />
                 </div>
@@ -232,7 +219,7 @@ export default function OnboardingPage() {
                           setGoogleUrl(e.target.value);
                           setValidationError(null);
                         }}
-                        placeholder="https://g.page/r/.../review (Dejar vacío para búsqueda automática)"
+                        placeholder="https://g.page/r/.../review (Dejar vacío para autovinculación)"
                         className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
                       />
                     </div>
@@ -287,15 +274,14 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              {/* Main Submit Action */}
+              {/* 1-Click Action Button */}
               <button
                 type="submit"
-                onClick={handleSaveConfiguration}
                 disabled={isSaving}
                 className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-base shadow-xl shadow-blue-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
                 <Sparkles className="w-5 h-5" />
-                <span>{isSaving ? 'Guardando en Supabase...' : 'Generar y Activar QR en 1 Clic 🚀'}</span>
+                <span>{isSaving ? 'Guardando y Activando...' : 'Generar y Activar QR en 1 Clic 🚀'}</span>
               </button>
             </form>
           </div>
@@ -312,33 +298,9 @@ export default function OnboardingPage() {
             <QrDisplay
               slug={slug}
               businessName={businessName || 'Tu Negocio'}
-              showDownloadOptions={isGenerated}
+              showDownloadOptions={true}
               onOpenPrintKit={() => setShowPrintKit(true)}
             />
-
-            {/* Action Buttons when generated */}
-            {isGenerated && (
-              <div className="w-full mt-6 pt-6 border-t border-slate-800 space-y-3">
-                <button
-                  type="button"
-                  onClick={handleSaveConfiguration}
-                  disabled={isSaving}
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{isSaving ? 'Guardando...' : 'Guardar y Abrir Panel'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowPrintKit(true)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-all flex items-center justify-center gap-2"
-                >
-                  <Printer className="w-4 h-4 text-blue-400" />
-                  <span>Descargar Kit de Impresión (PDF / Plantilla)</span>
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
