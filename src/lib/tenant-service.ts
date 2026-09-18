@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { getSupabaseEdgeClient } from './supabase-edge';
-import { Tenant, ScanAnalytics, AnalyticsSummary, TenantMode, DeviceType } from '@/types';
+import { Tenant, ScanAnalytics, AnalyticsSummary, TenantMode, DeviceType, SuperAdminMetrics } from '@/types';
 
 // In-memory fallback / demo cache to allow immediate local testing & offline fallback
 let demoTenants: Tenant[] = [
