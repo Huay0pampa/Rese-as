@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantBySlug, recordScanEvent } from '@/lib/tenant-service';
 import { detectDeviceType, extractCountry } from '@/lib/device-detection';
+import { createGoogleSearchUrl } from '@/lib/google-url';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -20,24 +21,35 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   // 1. Fetch tenant with ultra-low latency query
-  const tenant = await getTenantBySlug(slug);
+  let tenant = await getTenantBySlug(slug);
 
-  if (!tenant || !tenant.is_active) {
-    // Graceful fallback for unregistered QR codes
-    const notFoundUrl = new URL('/?error=tenant_not_found', request.url);
-    notFoundUrl.searchParams.set('slug', slug);
-    return NextResponse.redirect(notFoundUrl, 302);
+  // 2. Ultra-Resilient Fallback: If tenant not yet saved in DB, construct live Google search
+  if (!tenant) {
+    const formattedName = slug
+      .split('-')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+    tenant = {
+      id: crypto.randomUUID(),
+      name: formattedName,
+      slug: slug.toLowerCase(),
+      google_review_url: createGoogleSearchUrl(formattedName),
+      mode: 'DIRECT',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
   }
 
-  // 2. Extract telemetry headers from Edge request
+  // 3. Extract telemetry headers from Edge request
   const userAgent = request.headers.get('user-agent');
   const isMobileHeader = request.headers.get('sec-ch-ua-mobile');
   const deviceType = detectDeviceType(userAgent, isMobileHeader);
   const country = extractCountry(request.headers);
   const city = request.headers.get('x-vercel-ip-city') || request.headers.get('x-city');
 
-  // 3. Fire-and-forget asynchronous scan logging (non-blocking for ultra-low latency)
-  // Using Promise without awaiting ensures <100ms response time
+  // 4. Fire-and-forget asynchronous scan logging (non-blocking for ultra-low latency)
   try {
     const logPromise = recordScanEvent(
       tenant.id,
@@ -46,44 +58,40 @@ export async function GET(request: NextRequest, context: RouteContext) {
       country,
       city
     );
-    
-    // In Edge environments supporting waitUntil (Next.js / Cloudflare / Vercel Edge)
-    // or standard async detached execution
-    // @ts-expect-error waitUntil might be provided in certain Edge contexts
+
+    // @ts-expect-error Edge waitUntil
     if (typeof request.waitUntil === 'function') {
-      // @ts-expect-error waitUntil execution
+      // @ts-expect-error Edge waitUntil
       request.waitUntil(logPromise);
     } else {
-      // Run detached
       logPromise.catch(() => {});
     }
   } catch {
-    // Fail silently so customer is never blocked
+    // Fail silently
   }
 
-  // 4. Ultra-Fast Redirection based on Mode
+  // 5. Ultra-Fast Redirection based on Mode
   const latency = Date.now() - startTime;
-  
+
   if (tenant.mode === 'DIRECT') {
     // Immediate 302 Redirect directly to Google Review URL
-    const destination = tenant.google_review_url || 'https://maps.google.com';
+    const destination = tenant.google_review_url || createGoogleSearchUrl(tenant.name);
     const response = NextResponse.redirect(destination, 302);
-    
-    // Performance & cache control headers
+
     response.headers.set('X-Redirection-Engine', 'Edge-Direct-V1');
     response.headers.set('X-Latency-Ms', latency.toString());
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    
+
     return response;
   }
 
-  // Mode: SMART_LANDING -> Fast 307 Redirect to the ultra-lightweight landing page
+  // Mode: SMART_LANDING -> 307 Redirect to Smart Landing
   const landingUrl = new URL(`/l/${encodeURIComponent(tenant.slug)}`, request.url);
   const response = NextResponse.redirect(landingUrl, 307);
-  
+
   response.headers.set('X-Redirection-Engine', 'Edge-SmartLanding-V1');
   response.headers.set('X-Latency-Ms', latency.toString());
   response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  
+
   return response;
 }

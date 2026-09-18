@@ -30,10 +30,24 @@ export async function generateMetadata({ params }: SmartLandingProps): Promise<M
 
 export default async function SmartLandingPage({ params }: SmartLandingProps) {
   const { slug } = await params;
-  const tenant = await getTenantBySlug(slug);
+  let tenant = await getTenantBySlug(slug);
 
   if (!tenant) {
-    notFound();
+    const formattedName = slug
+      .split('-')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+    tenant = {
+      id: 'demo',
+      name: formattedName,
+      slug,
+      google_review_url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formattedName)}`,
+      mode: 'SMART_LANDING',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
   }
 
   // Pre-formatted WhatsApp link for private feedback/complaint filtering
