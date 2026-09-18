@@ -31,7 +31,8 @@ export function QrDisplay({
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const origin = window.location.origin;
-      setBaseUrl(process.env.NEXT_PUBLIC_APP_URL || origin);
+      // In browser, window.location.origin is always the exact live domain
+      setBaseUrl(origin);
     }
   }, []);
 

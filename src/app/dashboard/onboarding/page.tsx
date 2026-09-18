@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { validateGoogleReviewUrl, generateSlug } from '@/lib/google-url';
+import { validateGoogleReviewUrl, generateSlug, createGoogleSearchUrl } from '@/lib/google-url';
 import { saveTenant } from '@/lib/tenant-service';
 import { QrDisplay } from '@/components/qr-display';
 import { PrintKitModal } from '@/components/print-kit-modal';
@@ -20,28 +20,37 @@ import {
   HelpCircle,
   Star,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  CheckCircle2,
+  Zap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // Form states
-  const [businessName, setBusinessName] = useState('');
+  // 1-Click Form state
+  const [businessName, setBusinessName] = useState('El Velero');
   const [googleUrl, setGoogleUrl] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
   const [mode, setMode] = useState<'DIRECT' | 'SMART_LANDING'>('DIRECT');
 
-  // Validation & UI states
+  // UI & advanced states
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
-  const [isGenerated, setIsGenerated] = useState(false);
+  const [isGenerated, setIsGenerated] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showPrintKit, setShowPrintKit] = useState(false);
   const [showHelpGuide, setShowHelpGuide] = useState(false);
 
   const slug = generateSlug(businessName || 'mi-negocio');
+
+  // Auto-fill Google Review destination if not manually specified
+  const effectiveGoogleUrl = googleUrl.trim() || createGoogleSearchUrl(businessName || 'Mi Negocio');
 
   // Step 1: Validate & Generate Dynamic QR
   const handleValidateAndGenerate = (e: React.FormEvent) => {
@@ -54,19 +63,19 @@ export default function OnboardingPage() {
       return;
     }
 
-    const validation = validateGoogleReviewUrl(googleUrl);
-
-    if (!validation.isValid) {
-      setValidationError(validation.errorMessage || 'Enlace de Google Reviews no válido.');
-      return;
+    // If manual URL provided, validate format
+    if (googleUrl.trim()) {
+      const validation = validateGoogleReviewUrl(googleUrl.trim());
+      if (!validation.isValid) {
+        setValidationError(validation.errorMessage || 'Enlace de Google Reviews no válido.');
+        return;
+      }
+      if (validation.warningMessage) {
+        setValidationWarning(validation.warningMessage);
+      }
+      setGoogleUrl(validation.normalizedUrl);
     }
 
-    if (validation.warningMessage) {
-      setValidationWarning(validation.warningMessage);
-    }
-
-    // Set normalized URL and trigger generation state
-    setGoogleUrl(validation.normalizedUrl);
     setIsGenerated(true);
 
     try {
@@ -84,10 +93,12 @@ export default function OnboardingPage() {
   const handleSaveConfiguration = async () => {
     setIsSaving(true);
     try {
+      const finalUrl = googleUrl.trim() || createGoogleSearchUrl(businessName.trim());
+
       const saved = await saveTenant({
-        name: businessName.trim(),
+        name: businessName.trim() || 'Mi Negocio',
         slug,
-        google_review_url: googleUrl.trim(),
+        google_review_url: finalUrl,
         whatsapp_number: whatsappNumber.trim() || null,
         instagram_url: instagramUrl.trim() || null,
         mode,
@@ -117,15 +128,15 @@ export default function OnboardingPage() {
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-wider mb-2">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Onboarding Rápido</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">
+              <Zap className="w-3.5 h-3.5" />
+              <span>Generación Instantánea Sin Fricción</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white">
-              Crea tu Código QR Dinámico en 2 Minutos
+              Crea tu Código QR Dinámico en 1 Clic
             </h1>
             <p className="text-sm text-slate-400 mt-1">
-              Multiplica tus reseñas de 5 estrellas en Google Maps y redirige clientes al instante.
+              Solo escribe el nombre de tu local. El sistema vincula Google Maps y genera tu QR al instante.
             </p>
           </div>
         </div>
@@ -133,18 +144,18 @@ export default function OnboardingPage() {
 
       {/* Main Grid: Form / Preview */}
       <div className="max-w-4xl mx-auto w-full my-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column: Form & Configuration */}
+        {/* Left Column: 1-Click Form */}
         <div className="lg:col-span-7 space-y-6">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-            <form onSubmit={handleValidateAndGenerate} className="space-y-5">
-              {/* Field 1: Business Name */}
+            <form onSubmit={handleValidateAndGenerate} className="space-y-6">
+              {/* The ONLY Required Field: Business Name */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                  1. Nombre de tu Negocio / Comercio *
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
+                  Nombre de tu Negocio / Comercio *
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Building className="w-4 h-4" />
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-blue-400">
+                    <Building className="w-5 h-5" />
                   </div>
                   <input
                     type="text"
@@ -152,111 +163,120 @@ export default function OnboardingPage() {
                     value={businessName}
                     onChange={(e) => {
                       setBusinessName(e.target.value);
-                      setIsGenerated(false);
+                      setIsGenerated(true);
                     }}
-                    placeholder="Ej: Café & Bistro La Terraza"
-                    className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                    placeholder="Ej: El Velero, Café Bistro, Don Tito San Isidro"
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border border-blue-500/50 rounded-2xl text-white placeholder-slate-500 text-base focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all font-semibold shadow-inner"
                   />
                 </div>
-                {businessName && (
-                  <p className="text-[11px] text-slate-400 mt-1 font-mono">
-                    Slug generado: <span className="text-blue-400 font-semibold">{slug}</span> &bull; URL: <span className="text-slate-300">/r/{slug}</span>
-                  </p>
-                )}
-              </div>
 
-              {/* Field 2: Google Review URL */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                    2. Enlace Oficial de Reseña de Google Maps *
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowHelpGuide(!showHelpGuide)}
-                    className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold"
-                  >
-                    <HelpCircle className="w-3.5 h-3.5" />
-                    <span>¿Cómo obtenerlo?</span>
-                  </button>
-                </div>
-
-                {/* Helpful Guide Accordion */}
-                {showHelpGuide && (
-                  <div className="p-3.5 bg-blue-950/30 border border-blue-500/30 rounded-xl text-xs text-blue-200 mb-3 space-y-1.5 animate-in fade-in">
-                    <p className="font-bold">Cómo conseguir tu enlace directo de reseñas en Google:</p>
-                    <ol className="list-decimal pl-4 space-y-1 text-slate-300 text-[11px]">
-                      <li>Abre tu cuenta de <strong>Google Mi Negocio</strong> (Google Business Profile).</li>
-                      <li>Haz clic en el botón <strong>&quot;Pedir reseñas&quot;</strong> o <strong>&quot;Solicitar reseñas&quot;</strong>.</li>
-                      <li>Copia el enlace corto generado (ej: <code className="text-blue-300">https://g.page/r/.../review</code>) y pégalo aquí.</li>
-                    </ol>
+                {/* Auto-Detection Indicator */}
+                <div className="mt-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5 text-xs text-emerald-300">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Google Maps Autovinculado:</span>
+                    <span className="block text-[11px] text-slate-400 mt-0.5 font-mono truncate max-w-sm">
+                      {effectiveGoogleUrl}
+                    </span>
                   </div>
-                )}
-
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <LinkIcon className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    value={googleUrl}
-                    onChange={(e) => {
-                      setGoogleUrl(e.target.value);
-                      setIsGenerated(false);
-                      setValidationError(null);
-                    }}
-                    placeholder="https://g.page/r/CU2f3v.../review o https://search.google.com/local/writereview?placeid=..."
-                    className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium"
-                  />
                 </div>
               </div>
 
-              {/* Optional Channels */}
-              <div className="pt-2 border-t border-slate-800/80 space-y-4">
-                <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Canales Adicionales (Opcional - Para Modo Smart Landing)
-                </span>
+              {/* Advanced Options Accordion (Optional Manual Override) */}
+              <div className="border border-slate-800 rounded-2xl p-4 bg-slate-950/40">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="w-full flex items-center justify-between text-xs font-bold text-slate-300 hover:text-white transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <LinkIcon className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Opciones avanzadas (Pegar enlace manual o WhatsApp)</span>
+                  </span>
+                  {showAdvanced ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* WhatsApp */}
-                  <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">
-                      WhatsApp (Filtro de quejas)
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-400">
-                        <MessageCircle className="w-3.5 h-3.5" />
+                {showAdvanced && (
+                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-4 animate-in fade-in">
+                    {/* Manual Google URL (Optional) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-[11px] font-semibold text-slate-300">
+                          Enlace Específico de Reseñas de Google (Opcional)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowHelpGuide(!showHelpGuide)}
+                          className="text-[10px] text-blue-400 hover:underline"
+                        >
+                          ¿Cómo obtenerlo?
+                        </button>
                       </div>
+
+                      {showHelpGuide && (
+                        <div className="p-3 bg-blue-950/40 border border-blue-500/30 rounded-xl text-[11px] text-blue-200 mb-2 space-y-1">
+                          <p>
+                            En tu Perfil de Google Business, pulsa <strong>&quot;Pedir reseñas&quot;</strong> y pega el enlace aquí. Si lo dejas vacío, el sistema busca tu negocio automáticamente por su nombre.
+                          </p>
+                        </div>
+                      )}
+
                       <input
                         type="text"
-                        value={whatsappNumber}
-                        onChange={(e) => setWhatsappNumber(e.target.value)}
-                        placeholder="+51987654321"
-                        className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                        value={googleUrl}
+                        onChange={(e) => {
+                          setGoogleUrl(e.target.value);
+                          setValidationError(null);
+                        }}
+                        placeholder="https://g.page/r/.../review (Dejar vacío para búsqueda automática)"
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
                       />
                     </div>
-                  </div>
 
-                  {/* Instagram */}
-                  <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">
-                      Instagram URL
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-pink-400">
-                        <InstagramIcon className="w-3.5 h-3.5" />
+                    {/* WhatsApp & Instagram */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <div>
+                        <label className="block text-[11px] text-slate-400 font-medium mb-1">
+                          WhatsApp (Filtro Reclamos)
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-400">
+                            <MessageCircle className="w-3.5 h-3.5" />
+                          </div>
+                          <input
+                            type="text"
+                            value={whatsappNumber}
+                            onChange={(e) => setWhatsappNumber(e.target.value)}
+                            placeholder="+51987654321"
+                            className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
                       </div>
-                      <input
-                        type="text"
-                        value={instagramUrl}
-                        onChange={(e) => setInstagramUrl(e.target.value)}
-                        placeholder="https://instagram.com/tu_marca"
-                        className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:border-pink-500"
-                      />
+
+                      <div>
+                        <label className="block text-[11px] text-slate-400 font-medium mb-1">
+                          Instagram URL
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-pink-400">
+                            <InstagramIcon className="w-3.5 h-3.5" />
+                          </div>
+                          <input
+                            type="text"
+                            value={instagramUrl}
+                            onChange={(e) => setInstagramUrl(e.target.value)}
+                            placeholder="https://instagram.com/tu_marca"
+                            className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-600 focus:outline-none focus:border-pink-500"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Validation Feedback Messages */}
@@ -267,21 +287,15 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              {validationWarning && (
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{validationWarning}</span>
-                </div>
-              )}
-
-              {/* Validate & Generate Button */}
+              {/* Main Submit Action */}
               <button
                 type="submit"
-                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                onClick={handleSaveConfiguration}
+                disabled={isSaving}
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-base shadow-xl shadow-blue-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
-                <Sparkles className="w-4 h-4" />
-                <span>Validar y Generar QR Dinámico</span>
-                <ArrowRight className="w-4 h-4" />
+                <Sparkles className="w-5 h-5" />
+                <span>{isSaving ? 'Guardando en Supabase...' : 'Generar y Activar QR en 1 Clic 🚀'}</span>
               </button>
             </form>
           </div>
@@ -302,7 +316,7 @@ export default function OnboardingPage() {
               onOpenPrintKit={() => setShowPrintKit(true)}
             />
 
-            {/* Step 2 Actions when generated */}
+            {/* Action Buttons when generated */}
             {isGenerated && (
               <div className="w-full mt-6 pt-6 border-t border-slate-800 space-y-3">
                 <button
@@ -312,7 +326,7 @@ export default function OnboardingPage() {
                   className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{isSaving ? 'Guardando en Supabase...' : 'Guardar Configuración y Activar'}</span>
+                  <span>{isSaving ? 'Guardando...' : 'Guardar y Abrir Panel'}</span>
                 </button>
 
                 <button

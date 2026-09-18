@@ -109,6 +109,15 @@ export function validateGoogleReviewUrl(inputUrl: string): GoogleUrlValidationRe
 }
 
 /**
+ * Automatically creates a direct Google Maps search & review destination URL from business name
+ */
+export function createGoogleSearchUrl(businessName: string): string {
+  const cleanName = businessName.trim();
+  if (!cleanName) return 'https://www.google.com/maps';
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanName)}`;
+}
+
+/**
  * Creates a clean slug from a business name.
  */
 export function generateSlug(name: string): string {

@@ -27,7 +27,7 @@ export function PrintKitModal({
   React.useEffect(() => {
     async function loadQR() {
       if (typeof window === 'undefined') return;
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      const baseUrl = window.location.origin;
       const url = `${baseUrl}/r/${slug}`;
 
       try {
