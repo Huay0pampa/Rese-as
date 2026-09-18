@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { Header } from '@/components/common/Header';
-import { Footer } from '@/components/common/Footer';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -10,10 +8,19 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Analizador de Exportaciones | Inteligencia Comercial Aduanera',
+  title: 'ReviewBoost QR | SaaS de Reseñas Google y QRs Dinámicos Ultra-Rápidos',
   description:
-    'Aplicación web data-driven para cargar, validar, procesar y analizar reportes de exportaciones aduaneras.',
-  keywords: ['Exportaciones', 'Aduana', 'Comercio Exterior', 'Next.js', 'TypeScript', 'Analytics'],
+    'SaaS B2B de Reseñas y Fidelización en Tiempo Real mediante QRs Dinámicos con redirección Edge (<100ms), filtro de quejas por WhatsApp y kit de impresión.',
+  keywords: [
+    'QR Dinámico',
+    'Google Reviews',
+    'Reseñas Google Maps',
+    'SaaS B2B',
+    'Fidelización Clientes',
+    'Vercel Edge',
+    'Supabase',
+    'Next.js',
+  ],
 };
 
 export default function RootLayout({

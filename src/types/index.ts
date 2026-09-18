@@ -1,4 +1,53 @@
-export * from './export-data';
-export * from './schema';
-export * from './analysis';
-export * from './filters';
+export type TenantMode = 'DIRECT' | 'SMART_LANDING';
+
+export type DeviceType = 'Mobile' | 'Desktop' | 'Tablet' | 'Unknown';
+
+export interface Tenant {
+  id: string;
+  user_id?: string;
+  name: string;
+  slug: string;
+  google_review_url: string;
+  whatsapp_number?: string | null;
+  instagram_url?: string | null;
+  mode: TenantMode;
+  logo_url?: string | null;
+  accent_color?: string;
+  custom_message?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScanAnalytics {
+  id: string;
+  tenant_id: string;
+  user_agent?: string | null;
+  device_type: DeviceType;
+  country: string;
+  city?: string | null;
+  referrer?: string | null;
+  scanned_at: string;
+}
+
+export interface AnalyticsSummary {
+  total_scans: number;
+  scans_today: number;
+  scans_last_7_days: number;
+  devices: {
+    Mobile: number;
+    Desktop: number;
+    Tablet: number;
+    Unknown?: number;
+  };
+  countries: Record<string, number>;
+  recent_scans: ScanAnalytics[];
+}
+
+export interface GoogleUrlValidationResult {
+  isValid: boolean;
+  normalizedUrl: string;
+  formatType: 'g.page' | 'place_id' | 'maps_app' | 'google_search' | 'generic' | 'invalid';
+  errorMessage?: string;
+  warningMessage?: string;
+}
