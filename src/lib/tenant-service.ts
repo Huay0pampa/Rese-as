@@ -319,3 +319,162 @@ function buildAnalyticsSummary(scans: ScanAnalytics[]): AnalyticsSummary {
     recent_scans: scans.slice(0, 10),
   };
 }
+
+/**
+ * SuperAdmin: Get global metrics across all tenants
+ */
+export async function getSuperAdminMetrics(): Promise<SuperAdminMetrics> {
+  let allTenants: Tenant[] = [];
+  let allScans: ScanAnalytics[] = [];
+
+  if (isSupabaseConfigured) {
+    try {
+      const client = getSupabaseEdgeClient();
+      const { data: tData } = await client.from('tenants').select('*');
+      const { data: sData } = await client.from('scan_analytics').select('*');
+      if (tData) allTenants = tData as Tenant[];
+      if (sData) allScans = sData as ScanAnalytics[];
+    } catch {
+      allTenants = [...demoTenants];
+      allScans = [...demoScans];
+    }
+  } else {
+    allTenants = [...demoTenants];
+    allScans = [...demoScans];
+  }
+
+  const activeTenants = allTenants.filter(t => t.is_active !== false).length;
+  const directModeCount = allTenants.filter(t => t.mode === 'DIRECT').length;
+  const smartLandingModeCount = allTenants.filter(t => t.mode === 'SMART_LANDING').length;
+
+  const now = Date.now();
+  const oneDayAgo = now - 24 * 60 * 60 * 1000;
+  const scansTodayGlobal = allScans.filter(s => new Date(s.scanned_at).getTime() >= oneDayAgo).length;
+
+  // Estimated MRR: Free $0, Pro $19, Enterprise $49 (defaults to $19 for active demo)
+  const estimatedMRR = allTenants.reduce((acc, t) => {
+    if (t.plan === 'ENTERPRISE') return acc + 49;
+    if (t.plan === 'PRO') return acc + 19;
+    return acc + (t.is_active ? 19 : 0);
+  }, 0);
+
+  return {
+    totalTenants: allTenants.length,
+    activeTenants,
+    totalScansGlobal: allScans.length,
+    scansTodayGlobal,
+    directModeCount,
+    smartLandingModeCount,
+    estimatedMRR,
+  };
+}
+
+/**
+ * SuperAdmin: Get all tenants with individual scan counts
+ */
+export async function getAllTenantsWithStats(): Promise<(Tenant & { scan_count: number })[]> {
+  let allTenants: Tenant[] = [];
+  let allScans: ScanAnalytics[] = [];
+
+  if (isSupabaseConfigured) {
+    try {
+      const client = getSupabaseEdgeClient();
+      const { data: tData } = await client.from('tenants').select('*').order('created_at', { ascending: false });
+      const { data: sData } = await client.from('scan_analytics').select('tenant_id');
+      if (tData) allTenants = tData as Tenant[];
+      if (sData) allScans = sData as ScanAnalytics[];
+    } catch {
+      allTenants = [...demoTenants];
+      allScans = [...demoScans];
+    }
+  } else {
+    allTenants = [...demoTenants];
+    allScans = [...demoScans];
+  }
+
+  const scanCounts: Record<string, number> = {};
+  for (const s of allScans) {
+    scanCounts[s.tenant_id] = (scanCounts[s.tenant_id] || 0) + 1;
+  }
+
+  return allTenants.map(t => ({
+    ...t,
+    scan_count: scanCounts[t.id] || 0,
+    plan: t.plan || 'PRO',
+  }));
+}
+
+/**
+ * SuperAdmin: Toggle active/suspended status of a business
+ */
+export async function toggleTenantStatus(id: string, isActive: boolean): Promise<boolean> {
+  if (isSupabaseConfigured) {
+    try {
+      const client = getSupabaseEdgeClient();
+      await client.from('tenants').update({ is_active: isActive }).eq('id', id);
+      return true;
+    } catch {
+      // Fallback
+    }
+  }
+
+  const match = demoTenants.find(t => t.id === id);
+  if (match) {
+    match.is_active = isActive;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * SuperAdmin: Update tenant subscription plan
+ */
+export async function updateTenantPlan(id: string, plan: 'FREE' | 'PRO' | 'ENTERPRISE'): Promise<boolean> {
+  if (isSupabaseConfigured) {
+    try {
+      const client = getSupabaseEdgeClient();
+      await client.from('tenants').update({ plan }).eq('id', id);
+      return true;
+    } catch {
+      // Fallback
+    }
+  }
+
+  const match = demoTenants.find(t => t.id === id);
+  if (match) {
+    match.plan = plan;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * SuperAdmin: Global recent scans feed
+ */
+export async function getGlobalRecentScans(): Promise<(ScanAnalytics & { tenant_name?: string })[]> {
+  let allTenants: Tenant[] = [];
+  let allScans: ScanAnalytics[] = [];
+
+  if (isSupabaseConfigured) {
+    try {
+      const client = getSupabaseEdgeClient();
+      const { data: tData } = await client.from('tenants').select('id, name');
+      const { data: sData } = await client.from('scan_analytics').select('*').order('scanned_at', { ascending: false }).limit(25);
+      if (tData) allTenants = tData as Tenant[];
+      if (sData) allScans = sData as ScanAnalytics[];
+    } catch {
+      allTenants = [...demoTenants];
+      allScans = [...demoScans];
+    }
+  } else {
+    allTenants = [...demoTenants];
+    allScans = [...demoScans];
+  }
+
+  const tenantMap = new Map(allTenants.map(t => [t.id, t.name]));
+
+  return allScans.slice(0, 25).map(s => ({
+    ...s,
+    tenant_name: tenantMap.get(s.tenant_id) || 'Negocio Registrado',
+  }));
+}

@@ -14,9 +14,20 @@ export interface Tenant {
   logo_url?: string | null;
   accent_color?: string;
   custom_message?: string;
+  plan?: 'FREE' | 'PRO' | 'ENTERPRISE';
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface SuperAdminMetrics {
+  totalTenants: number;
+  activeTenants: number;
+  totalScansGlobal: number;
+  scansTodayGlobal: number;
+  directModeCount: number;
+  smartLandingModeCount: number;
+  estimatedMRR: number;
 }
 
 export interface ScanAnalytics {
