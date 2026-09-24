@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { generateSlug, createGoogleSearchUrl } from "@/lib/google-url";
 import { saveTenant } from "@/lib/tenant-service";
+import { validateLicenseKey } from "@/lib/license-service";
 import { QrDisplay } from "@/components/qr-display";
 import { PrintKitModal } from "@/components/print-kit-modal";
 import { InstagramIcon } from "@/components/icons";
@@ -26,14 +27,20 @@ import {
   Loader2,
   Search,
   AlertTriangle,
+  KeyRound,
+  ShieldCheck,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // Primary input
+  // Primary inputs
   const [businessName, setBusinessName] = useState("");
+  const [licenseKey, setLicenseKey] = useState("");
+
+  // License status
+  const [licenseStatus, setLicenseStatus] = useState<{ isValid: boolean; message: string } | null>(null);
 
   // Places search state
   const [searchResults, setSearchResults] = useState<GooglePlaceResult[]>([]);
@@ -62,7 +69,17 @@ export default function OnboardingPage() {
     ? selectedPlace.review_url
     : customGoogleUrl.trim() || createGoogleSearchUrl(businessName || "Mi Negocio");
 
-  // Auto-search with debounce when user types
+  // Validate license key as user types
+  useEffect(() => {
+    if (!licenseKey.trim()) {
+      setLicenseStatus(null);
+      return;
+    }
+    const res = validateLicenseKey(licenseKey);
+    setLicenseStatus(res);
+  }, [licenseKey]);
+
+  // Auto-search with debounce when user types business name
   const runSearch = useCallback(async (name: string) => {
     if (name.trim().length < 3) {
       setSearchResults([]);
@@ -124,6 +141,13 @@ export default function OnboardingPage() {
       return;
     }
 
+    // Require valid License Key
+    const licCheck = validateLicenseKey(licenseKey);
+    if (!licCheck.isValid) {
+      setErrorMessage(licCheck.message || "Por favor ingresa un código de licencia válido para activar tu sistema.");
+      return;
+    }
+
     // Require selection or place detection if Places API is active and found nothing
     if (!selectedPlace && !searchFallback && hasSearched && searchResults.length === 0 && !customGoogleUrl.trim()) {
       setErrorMessage("⚠️ No se encontró el negocio en Google Maps. Por favor escribe el nombre exacto con su distrito o ciudad (ej: 'Chifa Jumbo Surco').");
@@ -137,6 +161,7 @@ export default function OnboardingPage() {
         slug,
         google_review_url: effectiveGoogleUrl,
         place_id: selectedPlace?.place_id || null,
+        license_key: licenseKey.trim().toUpperCase(),
         whatsapp_number: whatsappNumber.trim() || null,
         instagram_url: instagramUrl.trim() || null,
         mode: "DIRECT",
@@ -171,13 +196,13 @@ export default function OnboardingPage() {
         <div className="border-b border-slate-800 pb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">
             <Zap className="w-3.5 h-3.5" />
-            <span>Onboarding Instantáneo</span>
+            <span>Onboarding Instantáneo con Licencia</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white">
             Generador de QR Dinámico — Link Directo a Google Reviews ⭐⭐⭐⭐⭐
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Escribe el nombre de tu local. El sistema busca tu negocio en Google y genera el QR que abre el formulario de reseñas directamente.
+            Ingresa tu código de licencia y el nombre de tu local para generar tu QR con vinculación directa a reseñas de 5 estrellas.
           </p>
         </div>
       </div>
@@ -188,10 +213,57 @@ export default function OnboardingPage() {
         <div className="lg:col-span-7 space-y-5">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
             <form onSubmit={handleSubmit} className="space-y-5">
+              {/* License Code Field */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <KeyRound className="w-4 h-4 text-purple-400" />
+                    <span>1. Código de Licencia / Activación</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal uppercase">Requerido</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-purple-400">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="text"
+                    value={licenseKey}
+                    onChange={(e) => {
+                      setLicenseKey(e.target.value);
+                      setErrorMessage(null);
+                    }}
+                    placeholder="Ej: PRO-2026, VIP-2026, LIC-889"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-950 border-2 border-purple-500/60 rounded-2xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-purple-400 focus:ring-4 focus:ring-purple-500/20 transition-all font-mono font-bold uppercase"
+                  />
+                </div>
+                {licenseStatus && (
+                  <div
+                    className={`mt-2 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center gap-1.5 ${
+                      licenseStatus.isValid
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                        : "bg-red-500/10 text-red-400 border border-red-500/30"
+                    }`}
+                  >
+                    {licenseStatus.isValid ? (
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                    )}
+                    <span>{licenseStatus.message}</span>
+                  </div>
+                )}
+                {!licenseKey.trim() && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Prueba con los códigos autorizados: <code className="text-purple-400 font-mono">PRO-2026</code> o <code className="text-purple-400 font-mono">VIP-2026</code>
+                  </p>
+                )}
+              </div>
+
               {/* Business Name Input */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
-                  Nombre de tu Negocio / Comercio
+                  2. Nombre de tu Negocio / Comercio
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-blue-400">
@@ -375,13 +447,13 @@ export default function OnboardingPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={isSaving || !businessName.trim()}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-black text-base shadow-xl shadow-blue-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isSaving || !businessName.trim() || !licenseKey.trim()}
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-black text-base shadow-xl shadow-purple-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isSaving ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /><span>Activando Negocio...</span></>
+                  <><Loader2 className="w-5 h-5 animate-spin" /><span>Verificando Licencia y Activando...</span></>
                 ) : (
-                  <><Sparkles className="w-5 h-5 text-amber-300" /><span>Generar y Activar QR de Reseñas 🚀</span><ArrowRight className="w-5 h-5 ml-1" /></>
+                  <><Sparkles className="w-5 h-5 text-amber-300" /><span>Validar Licencia y Activar QR 🚀</span><ArrowRight className="w-5 h-5 ml-1" /></>
                 )}
               </button>
             </form>
@@ -421,7 +493,7 @@ export default function OnboardingPage() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full text-center text-xs text-slate-500 pt-6 pb-2">
-        SaaS B2B de Reseñas &bull; Motor de QR Dinámico con Google Places API
+        SaaS B2B de Reseñas &bull; Motor de Licencias y QR Dinámico con Google Places API
       </footer>
     </main>
   );

@@ -9,6 +9,7 @@ export interface Tenant {
   slug: string;
   google_review_url: string;
   place_id?: string | null;
+  license_key?: string | null;
   whatsapp_number?: string | null;
   instagram_url?: string | null;
   mode: TenantMode;
