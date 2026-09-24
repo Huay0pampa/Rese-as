@@ -25,6 +25,7 @@ import {
   MapPin,
   Loader2,
   Search,
+  AlertTriangle,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -43,6 +44,7 @@ export default function OnboardingPage() {
 
   // Advanced optional inputs (collapsed)
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [customGoogleUrl, setCustomGoogleUrl] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [instagramUrl, setInstagramUrl] = useState("");
 
@@ -55,10 +57,10 @@ export default function OnboardingPage() {
 
   const slug = generateSlug(businessName || "mi-negocio");
 
-  // The effective Google URL: use selected place or fallback
+  // The effective Google URL: use selected place, custom URL, or fallback search
   const effectiveGoogleUrl = selectedPlace
     ? selectedPlace.review_url
-    : createGoogleSearchUrl(businessName || "Mi Negocio");
+    : customGoogleUrl.trim() || createGoogleSearchUrl(businessName || "Mi Negocio");
 
   // Auto-search with debounce when user types
   const runSearch = useCallback(async (name: string) => {
@@ -83,7 +85,7 @@ export default function OnboardingPage() {
       setSearchFallback(data.fallback || false);
       setHasSearched(true);
 
-      // Auto-select first result if only one result
+      // Auto-select first result if only one result returned
       if (!data.fallback && data.results?.length === 1) {
         setSelectedPlace(data.results[0]);
       }
@@ -109,6 +111,7 @@ export default function OnboardingPage() {
   const handleSelectPlace = (place: GooglePlaceResult) => {
     setSelectedPlace(place);
     setSearchResults([]);
+    setErrorMessage(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,6 +121,12 @@ export default function OnboardingPage() {
     const cleanName = businessName.trim();
     if (!cleanName) {
       setErrorMessage("Por favor escribe el nombre de tu negocio.");
+      return;
+    }
+
+    // Require selection or place detection if Places API is active and found nothing
+    if (!selectedPlace && !searchFallback && hasSearched && searchResults.length === 0 && !customGoogleUrl.trim()) {
+      setErrorMessage("⚠️ No se encontró el negocio en Google Maps. Por favor escribe el nombre exacto con su distrito o ciudad (ej: 'Chifa Jumbo Surco').");
       return;
     }
 
@@ -195,7 +204,10 @@ export default function OnboardingPage() {
                   <input
                     type="text"
                     value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
+                    onChange={(e) => {
+                      setBusinessName(e.target.value);
+                      setErrorMessage(null);
+                    }}
                     placeholder="Ej: Chifa Jumbo, Don Tito San Isidro, Café Bistro"
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border-2 border-blue-500 rounded-2xl text-white placeholder-slate-500 text-base focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/20 transition-all font-bold shadow-inner"
                   />
@@ -206,7 +218,7 @@ export default function OnboardingPage() {
                   <div className="mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
                     <div className="px-4 py-2 border-b border-slate-800 flex items-center gap-2 text-xs text-slate-400">
                       <Search className="w-3.5 h-3.5" />
-                      <span>Selecciona tu negocio para el link directo de reseñas:</span>
+                      <span>Selecciona tu negocio para vincular el formulario directo de 5 estrellas:</span>
                     </div>
                     {searchResults.map((place) => (
                       <button
@@ -245,7 +257,7 @@ export default function OnboardingPage() {
                   <div className="mt-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-300">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
                     <div>
-                      <span className="font-bold text-emerald-300">✅ Negocio encontrado — Link directo a reseñas activado</span>
+                      <span className="font-bold text-emerald-300">✅ Negocio encontrado en Google — Link directo a 5 estrellas activado</span>
                       <span className="block text-[11px] text-slate-400 mt-0.5 truncate max-w-sm">{selectedPlace.formatted_address}</span>
                       <button
                         type="button"
@@ -269,15 +281,17 @@ export default function OnboardingPage() {
                       </div>
                     </div>
                   ) : searchResults.length === 0 && businessName.trim().length >= 3 ? (
-                    <div className="mt-3 p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700 flex items-start gap-2.5 text-xs text-slate-400">
-                      <Globe className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div className="mt-3 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-300">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
                       <div>
-                        <span className="font-medium">No se encontró tu negocio en Google</span>
-                        <span className="block mt-0.5">El QR usará búsqueda de Google Maps. Puedes pegar el link exacto en Opciones Avanzadas.</span>
+                        <span className="font-bold text-red-300">⚠️ No se encontró este negocio en Google Maps</span>
+                        <span className="block text-[11px] text-slate-300 mt-0.5">
+                          Agrega el distrito o ciudad (ej: <strong>"{businessName.trim()} Miraflores"</strong>) o verifica que tu negocio esté creado en Google Business.
+                        </span>
                       </div>
                     </div>
                   ) : null
-                ) : businessName.trim().length >= 3 && !isSearching ? null : null}
+                ) : null}
               </div>
 
               {/* Collapsed Advanced Options */}
@@ -289,13 +303,26 @@ export default function OnboardingPage() {
                 >
                   <span className="flex items-center gap-2">
                     <Globe className="w-3.5 h-3.5" />
-                    <span>Opciones avanzadas (WhatsApp / Link Manual de Google)</span>
+                    <span>Opciones avanzadas (Enlace manual / WhatsApp)</span>
                   </span>
                   {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
 
                 {showAdvanced && (
                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-4 animate-in fade-in">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Enlace manual de Google Reviews (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={customGoogleUrl}
+                        onChange={(e) => setCustomGoogleUrl(e.target.value)}
+                        placeholder="https://g.page/r/.../review (Para anular la búsqueda automática)"
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] text-slate-400 font-medium mb-1">
