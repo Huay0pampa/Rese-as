@@ -28,14 +28,14 @@ import {
   Search,
   KeyRound,
   ShieldCheck,
-  AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // Primary inputs (pre-filled license key for zero friction)
+  // Primary inputs
   const [businessName, setBusinessName] = useState("");
   const [licenseKey, setLicenseKey] = useState("PRO-2026");
 
@@ -48,7 +48,7 @@ export default function OnboardingPage() {
   const [searchResults, setSearchResults] = useState<GooglePlaceResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<GooglePlaceResult | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Advanced optional inputs (collapsed)
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -65,7 +65,7 @@ export default function OnboardingPage() {
 
   const slug = generateSlug(businessName || "mi-negocio");
 
-  // The effective Google URL: use selected place, custom URL, or fallback
+  // The effective Google URL: use selected place, custom URL, or auto Google Search
   const effectiveGoogleUrl = selectedPlace
     ? selectedPlace.review_url
     : customGoogleUrl.trim() || createGoogleSearchUrl(businessName || "Mi Negocio");
@@ -80,15 +80,16 @@ export default function OnboardingPage() {
     setLicenseStatus(res);
   }, [licenseKey]);
 
-  // Auto-search Google Places as user types (keeps dropdown open for user selection)
+  // Auto-search Google Places as user types
   const runSearch = useCallback(async (name: string) => {
     if (name.trim().length < 2) {
       setSearchResults([]);
-      setHasSearched(false);
+      setApiError(null);
       return;
     }
 
     setIsSearching(true);
+    setApiError(null);
 
     try {
       const res = await fetch("/api/find-place", {
@@ -99,10 +100,12 @@ export default function OnboardingPage() {
       const data = await res.json();
       const items: GooglePlaceResult[] = data.results || [];
       setSearchResults(items);
-      setHasSearched(true);
+
+      if (data.error || data.status === "REQUEST_DENIED") {
+        setApiError(data.error || data.status || "ERROR");
+      }
     } catch {
       setSearchResults([]);
-      setHasSearched(true);
     } finally {
       setIsSearching(false);
     }
@@ -207,7 +210,7 @@ export default function OnboardingPage() {
                     <KeyRound className="w-4 h-4 text-purple-400" />
                     <span>1. Código de Licencia / Activación</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-normal uppercase">Requerido</span>
+                  <span className="text-[10px] text-purple-400 font-bold uppercase">Código PRO Activo</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-purple-400">
@@ -221,8 +224,17 @@ export default function OnboardingPage() {
                       setErrorMessage(null);
                     }}
                     placeholder="Ej: PRO-2026, VIP-2026, LIC-889"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-950 border-2 border-purple-500/60 rounded-2xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-purple-400 focus:ring-4 focus:ring-purple-500/20 transition-all font-mono font-bold uppercase"
+                    className="w-full pl-11 pr-24 py-3 bg-slate-950 border-2 border-purple-500/60 rounded-2xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-purple-400 focus:ring-4 focus:ring-purple-500/20 transition-all font-mono font-bold uppercase"
                   />
+                  {!licenseKey.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setLicenseKey("PRO-2026")}
+                      className="absolute right-2 top-1.5 bottom-1.5 px-3 bg-purple-600 hover:bg-purple-500 text-white font-mono font-bold text-xs rounded-xl transition-colors"
+                    >
+                      Usar PRO-2026
+                    </button>
+                  )}
                 </div>
                 {licenseStatus && (
                   <div
@@ -325,15 +337,32 @@ export default function OnboardingPage() {
                       </button>
                     </div>
                   </div>
-                ) : hasSearched && !isSearching && searchResults.length === 0 && businessName.trim().length >= 3 ? (
-                  <div className="mt-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-300">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                    <div>
-                      <span className="font-bold">⚠️ No encontramos coincidencias exactas para "{businessName}"</span>
-                      <span className="block text-[11px] text-slate-400 mt-0.5">
-                        Prueba agregando la ciudad o distrito (ej: <strong>"{businessName.trim()} Surco"</strong> o <strong>"{businessName.trim()} Lima"</strong>).
-                      </span>
+                ) : businessName.trim().length >= 2 ? (
+                  <div className="mt-3 p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 space-y-1 text-xs text-blue-300">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
+                      <span className="font-bold">✨ Autovinculado como "{businessName.trim()}"</span>
                     </div>
+                    <p className="text-[11px] text-slate-400 pl-6">
+                      El QR dirigirá automáticamente al formulario de 5 estrellas al escanear.
+                    </p>
+
+                    {apiError && (apiError.includes("Billing") || apiError.includes("REQUEST_DENIED")) && (
+                      <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                        <div>
+                          <span className="font-bold">💡 Tip de Google Cloud:</span> Para activar el buscador en vivo con sucursales, vincula una tarjeta en Google Cloud:
+                          <a
+                            href="https://console.cloud.google.com/project/_/billing/enable"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-amber-200 underline font-bold ml-1 inline-flex items-center gap-1"
+                          >
+                            Habilitar Facturación Gratis ($200 USD/mes regalo) <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>
