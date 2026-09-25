@@ -3,7 +3,7 @@ import { GooglePlaceResult } from "@/types";
 /**
  * Converts a Google Maps hex feature pair (e.g. "0x9105c7db810b9a2f:0x2de696df10136545")
  * into a standard base64url ChIJ... Place ID without external dependencies.
- * Fully compatible with Edge Runtime & Node.js Runtime (ES2017/ES2020+).
+ * Fully compatible with Edge Runtime & Node.js Runtime.
  */
 export function hexToPlaceId(featureId: string): string | null {
   try {
@@ -52,59 +52,65 @@ export function hexToPlaceId(featureId: string): string | null {
 }
 
 /**
- * High-performance fallback resolver that fetches Google Maps search RPC
+ * Multi-pass fallback resolver that queries Google Maps search RPC
  * and extracts Place IDs directly (ChIJ...) or via Hex feature ID conversion.
- * Requires zero billing and zero API keys.
+ * Works dynamically for ANY business name entered by the user. Zero billing required.
  */
 export async function fetchPlaceIdFallback(rawQuery: string): Promise<string | null> {
-  const query = rawQuery.trim();
-  if (!query || query.length < 2) return null;
+  const clean = rawQuery.trim();
+  if (!clean || clean.length < 2) return null;
 
-  try {
-    const searchQuery = query.toLowerCase().includes("peru") ? query : `${query} Peru`;
-    const url = `https://www.google.com/search?tbm=map&authuser=0&hl=es&gl=pe&q=${encodeURIComponent(searchQuery)}`;
+  const attempts = [
+    clean,
+    clean.toLowerCase().includes("peru") ? clean : `${clean} Peru`,
+  ];
 
-    const resp = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
-        Referer: "https://www.google.com/",
-      },
-      next: { revalidate: 86400 }, // Cache fallback responses for 24h
-    });
+  for (const query of attempts) {
+    try {
+      const url = `https://www.google.com/search?tbm=map&authuser=0&hl=es&gl=pe&q=${encodeURIComponent(query)}`;
 
-    if (!resp.ok) return null;
-    const text = await resp.text();
+      const resp = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
+          Referer: "https://www.google.com/",
+        },
+        next: { revalidate: 86400 },
+      });
 
-    // 1. Direct ChIJ match
-    const chijMatches = text.match(/ChIJ[A-Za-z0-9_-]{23}/g);
-    if (chijMatches && chijMatches.length > 0) {
-      const unique = Array.from(new Set(chijMatches));
-      return unique[0];
-    }
+      if (!resp.ok) continue;
+      const text = await resp.text();
 
-    // 2. Hex feature ID match & convert
-    const hexMatches = text.match(/0x[0-9a-fA-F]+:0x[0-9a-fA-F]+/g);
-    if (hexMatches && hexMatches.length > 0) {
-      for (const hexPair of hexMatches) {
-        const placeId = hexToPlaceId(hexPair);
-        if (placeId && placeId.length === 27) {
-          return placeId;
+      // 1. Direct ChIJ match
+      const chijMatches = text.match(/ChIJ[A-Za-z0-9_-]{23}/g);
+      if (chijMatches && chijMatches.length > 0) {
+        const unique = Array.from(new Set(chijMatches));
+        return unique[0];
+      }
+
+      // 2. Hex feature ID match & convert
+      const hexMatches = text.match(/0x[0-9a-fA-F]+:0x[0-9a-fA-F]+/g);
+      if (hexMatches && hexMatches.length > 0) {
+        for (const hexPair of hexMatches) {
+          const placeId = hexToPlaceId(hexPair);
+          if (placeId && placeId.length === 27) {
+            return placeId;
+          }
         }
       }
+    } catch (err) {
+      console.error("Place ID fallback fetch attempt error:", err);
     }
-  } catch (err) {
-    console.error("Place ID fallback fetch error:", err);
   }
 
   return null;
 }
 
 /**
- * Resolves a business query to a GooglePlaceResult array.
+ * Resolves ANY business query to a GooglePlaceResult array dynamically.
  * Tries Google Places Text Search API first. If billing/API errors occur or no results,
- * seamlessly uses zero-cost fallback.
+ * seamlessly uses zero-cost fallback for any business name.
  */
 export async function resolvePlacesWithFallback(
   rawQuery: string,
@@ -113,7 +119,7 @@ export async function resolvePlacesWithFallback(
   const query = rawQuery.trim();
   if (!query) return { results: [], source: "fallback", status: "ZERO_RESULTS" };
 
-  // Attempt 1: Official Google Places API if key is present
+  // Attempt 1: Official Google Places API if key is present and active
   if (apiKey) {
     try {
       const searchQuery = encodeURIComponent(query);
@@ -146,7 +152,7 @@ export async function resolvePlacesWithFallback(
     }
   }
 
-  // Attempt 2: Zero-cost Fallback Place ID Resolver
+  // Attempt 2: Zero-cost Multi-pass Fallback Place ID Resolver
   const fallbackPlaceId = await fetchPlaceIdFallback(query);
   if (fallbackPlaceId) {
     const formattedName = query.charAt(0).toUpperCase() + query.slice(1);
