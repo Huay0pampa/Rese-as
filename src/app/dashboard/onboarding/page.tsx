@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -28,18 +28,21 @@ import {
   Search,
   KeyRound,
   ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // Primary inputs
+  // Primary inputs (pre-filled license key for zero friction)
   const [businessName, setBusinessName] = useState("");
   const [licenseKey, setLicenseKey] = useState("PRO-2026");
 
   // License status
-  const [licenseStatus, setLicenseStatus] = useState<{ isValid: boolean; message: string } | null>(null);
+  const [licenseStatus, setLicenseStatus] = useState<{ isValid: boolean; message: string } | null>(
+    validateLicenseKey("PRO-2026")
+  );
 
   // Places search state
   const [searchResults, setSearchResults] = useState<GooglePlaceResult[]>([]);
@@ -62,7 +65,7 @@ export default function OnboardingPage() {
 
   const slug = generateSlug(businessName || "mi-negocio");
 
-  // The effective Google URL: use selected place, custom URL, or fallback search
+  // The effective Google URL: use selected place, custom URL, or fallback
   const effectiveGoogleUrl = selectedPlace
     ? selectedPlace.review_url
     : customGoogleUrl.trim() || createGoogleSearchUrl(businessName || "Mi Negocio");
@@ -77,11 +80,10 @@ export default function OnboardingPage() {
     setLicenseStatus(res);
   }, [licenseKey]);
 
-  // Auto-search with debounce when user types business name
+  // Auto-search Google Places as user types (keeps dropdown open for user selection)
   const runSearch = useCallback(async (name: string) => {
     if (name.trim().length < 2) {
       setSearchResults([]);
-      setSelectedPlace(null);
       setHasSearched(false);
       return;
     }
@@ -98,16 +100,8 @@ export default function OnboardingPage() {
       const items: GooglePlaceResult[] = data.results || [];
       setSearchResults(items);
       setHasSearched(true);
-
-      // Auto-select first result if matching or single result
-      if (items.length > 0) {
-        setSelectedPlace(items[0]);
-      } else {
-        setSelectedPlace(null);
-      }
     } catch {
       setSearchResults([]);
-      setSelectedPlace(null);
       setHasSearched(true);
     } finally {
       setIsSearching(false);
@@ -118,7 +112,7 @@ export default function OnboardingPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       runSearch(businessName);
-    }, 400);
+    }, 350);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -150,7 +144,7 @@ export default function OnboardingPage() {
     setIsSaving(true);
     try {
       const saved = await saveTenant({
-        name: cleanName,
+        name: selectedPlace ? selectedPlace.name : cleanName,
         slug,
         google_review_url: effectiveGoogleUrl,
         place_id: selectedPlace?.place_id || null,
@@ -195,7 +189,7 @@ export default function OnboardingPage() {
             Generador de QR Dinámico — Link Directo a Google Reviews ⭐⭐⭐⭐⭐
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Ingresa el nombre de tu local para generar tu QR dinámico autovinculado a Google Reviews.
+            Ingresa tu código de licencia y el nombre de tu local para generar tu QR con vinculación directa a reseñas de 5 estrellas.
           </p>
         </div>
       </div>
@@ -266,26 +260,29 @@ export default function OnboardingPage() {
                     value={businessName}
                     onChange={(e) => {
                       setBusinessName(e.target.value);
+                      setSelectedPlace(null);
                       setErrorMessage(null);
                     }}
-                    placeholder="Ej: Pollos Don Tito, Chifa Jumbo, Café Bistro"
+                    placeholder="Ej: Pollos Don Tito, Chifa Jumbo, Don Tito San Isidro"
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border-2 border-blue-500 rounded-2xl text-white placeholder-slate-500 text-base focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/20 transition-all font-bold shadow-inner"
                   />
                 </div>
 
-                {/* Search Results Dropdown */}
-                {searchResults.length > 0 && !selectedPlace && (
-                  <div className="mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                {/* Search Results Dropdown List */}
+                {searchResults.length > 0 && (
+                  <div className="mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl">
                     <div className="px-4 py-2 border-b border-slate-800 flex items-center gap-2 text-xs text-slate-400">
-                      <Search className="w-3.5 h-3.5" />
-                      <span>Coincidencias encontradas en Google Maps:</span>
+                      <Search className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Coincidencias encontradas en Google Maps (Haz clic en tu local):</span>
                     </div>
                     {searchResults.map((place) => (
                       <button
                         key={place.place_id}
                         type="button"
                         onClick={() => handleSelectPlace(place)}
-                        className="w-full text-left px-4 py-3.5 hover:bg-slate-800 border-b border-slate-800/50 last:border-0 transition-colors group"
+                        className={`w-full text-left px-4 py-3.5 border-b border-slate-800/50 last:border-0 transition-colors group cursor-pointer ${
+                          selectedPlace?.place_id === place.place_id ? "bg-blue-600/20 border-l-4 border-l-blue-500" : "hover:bg-slate-800"
+                        }`}
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
@@ -312,31 +309,29 @@ export default function OnboardingPage() {
                   </div>
                 )}
 
-                {/* Status Pill */}
+                {/* Selected Place Badge */}
                 {selectedPlace ? (
                   <div className="mt-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-300">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
                     <div>
-                      <span className="font-bold text-emerald-300">✅ Vinculación a Google Reviews Activada</span>
-                      <span className="block text-[11px] text-slate-400 mt-0.5 truncate max-w-sm">{selectedPlace.formatted_address || selectedPlace.name}</span>
-                      {searchResults.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => { setSelectedPlace(null); }}
-                          className="text-[11px] text-blue-400 hover:text-blue-300 mt-1 underline block"
-                        >
-                          Ver otras sucursales o ubicaciones
-                        </button>
-                      )}
+                      <span className="font-bold text-emerald-300">✅ Ficha de Google Maps Vinculada — Directo a 5 Estrellas</span>
+                      <span className="block text-[11px] text-slate-300 mt-0.5 font-medium">{selectedPlace.name} &bull; {selectedPlace.formatted_address}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedPlace(null); runSearch(businessName); }}
+                        className="text-[11px] text-blue-400 hover:text-blue-300 mt-1 underline block"
+                      >
+                        Cambiar local o sucursal seleccionada
+                      </button>
                     </div>
                   </div>
-                ) : businessName.trim().length >= 2 ? (
-                  <div className="mt-3 p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-start gap-2.5 text-xs text-blue-300">
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
+                ) : hasSearched && !isSearching && searchResults.length === 0 && businessName.trim().length >= 3 ? (
+                  <div className="mt-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-300">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
                     <div>
-                      <span className="font-bold">✨ Autovinculado como "{businessName.trim()}"</span>
+                      <span className="font-bold">⚠️ No encontramos coincidencias exactas para "{businessName}"</span>
                       <span className="block text-[11px] text-slate-400 mt-0.5">
-                        El sistema resolverá automáticamente el enlace de 5 estrellas al activar.
+                        Prueba agregando la ciudad o distrito (ej: <strong>"{businessName.trim()} Surco"</strong> o <strong>"{businessName.trim()} Lima"</strong>).
                       </span>
                     </div>
                   </div>
@@ -450,7 +445,7 @@ export default function OnboardingPage() {
 
             <QrDisplay
               slug={slug}
-              businessName={businessName || "Tu Negocio"}
+              businessName={selectedPlace ? selectedPlace.name : businessName || "Tu Negocio"}
               showDownloadOptions={true}
               onOpenPrintKit={() => setShowPrintKit(true)}
             />
@@ -462,7 +457,7 @@ export default function OnboardingPage() {
       <PrintKitModal
         isOpen={showPrintKit}
         onClose={() => setShowPrintKit(false)}
-        tenantName={businessName || "Mi Negocio"}
+        tenantName={selectedPlace ? selectedPlace.name : businessName || "Mi Negocio"}
         slug={slug}
       />
 
