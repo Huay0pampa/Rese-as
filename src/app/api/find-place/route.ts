@@ -9,7 +9,7 @@ export const runtime = "nodejs";
  * Returns: { results: GooglePlaceResult[], fallback: boolean, status?: string }
  *
  * Uses Google Places Text Search API (server-side) to find businesses by name.
- * The API key is kept secret in GOOGLE_PLACES_API_KEY env var.
+ * Checks all possible env var key names for maximum resilience on Vercel.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -19,14 +19,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Query too short" }, { status: 400 });
     }
 
-    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    // Check all variations of API Key names in Vercel environment
+    const apiKey =
+      process.env.GOOGLE_PLACES_API_KEY ||
+      process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY ||
+      process.env.GOOGLE_MAPS_API_KEY ||
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+      process.env.GOOGLE_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json({ results: [], fallback: true, error: "MISSING_API_KEY" }, { status: 200 });
     }
 
     const searchQuery = encodeURIComponent(query.trim());
-    // Query Places API without restrictive type filtering to ensure all local business categories match
     const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&key=${apiKey}`;
 
     const resp = await fetch(url);
