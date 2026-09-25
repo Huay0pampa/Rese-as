@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantBySlug, recordScanEvent } from "@/lib/tenant-service";
 import { detectDeviceType, extractCountry } from "@/lib/device-detection";
 import { createGoogleSearchUrl } from "@/lib/google-url";
+import { fetchPlaceIdFallback } from "@/lib/place-resolver";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -13,28 +14,36 @@ interface RouteContext {
 }
 
 /**
- * Dynamically resolves a business name/slug to a direct 5-star Google Review URL via Google Places API.
+ * Dynamically resolves a business name/slug to a direct 5-star Google Review URL via Google Places API or zero-cost fallback.
  */
 async function resolveDirectReviewUrl(businessQuery: string): Promise<string | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) return null;
 
-  try {
-    const searchQuery = encodeURIComponent(businessQuery.trim());
-    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&key=${apiKey}`;
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
-
-    const data = await resp.json();
-    if (data.status === "OK" && data.results && data.results.length > 0) {
-      const placeId = data.results[0].place_id;
-      if (placeId) {
-        return `https://search.google.com/local/writereview?placeid=${placeId}`;
+  if (apiKey) {
+    try {
+      const searchQuery = encodeURIComponent(businessQuery.trim());
+      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&key=${apiKey}`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.status === "OK" && data.results && data.results.length > 0) {
+          const placeId = data.results[0].place_id;
+          if (placeId) {
+            return `https://search.google.com/local/writereview?placeid=${placeId}`;
+          }
+        }
       }
+    } catch (err) {
+      console.error("Edge Places resolution error:", err);
     }
-  } catch (err) {
-    console.error("Edge Places resolution error:", err);
   }
+
+  // Zero-cost Place ID resolver fallback
+  const fallbackPlaceId = await fetchPlaceIdFallback(businessQuery);
+  if (fallbackPlaceId) {
+    return `https://search.google.com/local/writereview?placeid=${fallbackPlaceId}`;
+  }
+
   return null;
 }
 
@@ -99,7 +108,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   // 5. Check if URL is already a direct writereview URL or contains placeid
   let destination = tenant.google_review_url;
 
-  // If destination is a generic maps search URL, attempt live Edge Places resolution to force direct 5-star modal!
+  // If destination is a generic maps search URL, attempt live Place ID resolution to force direct 5-star modal!
   if (!destination || destination.includes("maps/search") || !destination.includes("placeid")) {
     if (tenant.place_id) {
       destination = `https://search.google.com/local/writereview?placeid=${tenant.place_id}`;
