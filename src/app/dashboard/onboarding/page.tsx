@@ -26,7 +26,6 @@ import {
   MapPin,
   Loader2,
   Search,
-  AlertTriangle,
   KeyRound,
   ShieldCheck,
 } from "lucide-react";
@@ -37,7 +36,7 @@ export default function OnboardingPage() {
 
   // Primary inputs
   const [businessName, setBusinessName] = useState("");
-  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseKey, setLicenseKey] = useState("PRO-2026");
 
   // License status
   const [licenseStatus, setLicenseStatus] = useState<{ isValid: boolean; message: string } | null>(null);
@@ -46,7 +45,6 @@ export default function OnboardingPage() {
   const [searchResults, setSearchResults] = useState<GooglePlaceResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<GooglePlaceResult | null>(null);
-  const [searchFallback, setSearchFallback] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
   // Advanced optional inputs (collapsed)
@@ -64,10 +62,10 @@ export default function OnboardingPage() {
 
   const slug = generateSlug(businessName || "mi-negocio");
 
-  // The effective Google URL: use selected place, custom URL, or fallback search
+  // The effective Google URL: use selected place, custom URL, or direct review URL
   const effectiveGoogleUrl = selectedPlace
     ? selectedPlace.review_url
-    : customGoogleUrl.trim() || createGoogleSearchUrl(businessName || "Mi Negocio");
+    : customGoogleUrl.trim() || `https://search.google.com/local/writereview?placeid=${selectedPlace?.place_id || ""}` || createGoogleSearchUrl(businessName || "Mi Negocio");
 
   // Validate license key as user types
   useEffect(() => {
@@ -81,7 +79,7 @@ export default function OnboardingPage() {
 
   // Auto-search with debounce when user types business name
   const runSearch = useCallback(async (name: string) => {
-    if (name.trim().length < 3) {
+    if (name.trim().length < 2) {
       setSearchResults([]);
       setSelectedPlace(null);
       setHasSearched(false);
@@ -89,7 +87,6 @@ export default function OnboardingPage() {
     }
 
     setIsSearching(true);
-    setSelectedPlace(null);
 
     try {
       const res = await fetch("/api/find-place", {
@@ -98,17 +95,19 @@ export default function OnboardingPage() {
         body: JSON.stringify({ query: name.trim() }),
       });
       const data = await res.json();
-      setSearchResults(data.results || []);
-      setSearchFallback(data.fallback || false);
+      const items: GooglePlaceResult[] = data.results || [];
+      setSearchResults(items);
       setHasSearched(true);
 
-      // Auto-select first result if only one result returned
-      if (!data.fallback && data.results?.length === 1) {
-        setSelectedPlace(data.results[0]);
+      // Auto-select first result if matching or single result
+      if (items.length > 0) {
+        setSelectedPlace(items[0]);
+      } else {
+        setSelectedPlace(null);
       }
     } catch {
       setSearchResults([]);
-      setSearchFallback(true);
+      setSelectedPlace(null);
       setHasSearched(true);
     } finally {
       setIsSearching(false);
@@ -119,7 +118,7 @@ export default function OnboardingPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       runSearch(businessName);
-    }, 700);
+    }, 400);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -145,12 +144,6 @@ export default function OnboardingPage() {
     const licCheck = validateLicenseKey(licenseKey);
     if (!licCheck.isValid) {
       setErrorMessage(licCheck.message || "Por favor ingresa un código de licencia válido para activar tu sistema.");
-      return;
-    }
-
-    // Require selection or place detection if Places API is active and found nothing
-    if (!selectedPlace && !searchFallback && hasSearched && searchResults.length === 0 && !customGoogleUrl.trim()) {
-      setErrorMessage("⚠️ No se encontró el negocio en Google Maps. Por favor escribe el nombre exacto con su distrito o ciudad (ej: 'Chifa Jumbo Surco').");
       return;
     }
 
@@ -202,7 +195,7 @@ export default function OnboardingPage() {
             Generador de QR Dinámico — Link Directo a Google Reviews ⭐⭐⭐⭐⭐
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Ingresa tu código de licencia y el nombre de tu local para generar tu QR con vinculación directa a reseñas de 5 estrellas.
+            Ingresa el nombre de tu local para generar tu QR dinámico autovinculado a Google Reviews.
           </p>
         </div>
       </div>
@@ -253,11 +246,6 @@ export default function OnboardingPage() {
                     <span>{licenseStatus.message}</span>
                   </div>
                 )}
-                {!licenseKey.trim() && (
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Prueba con los códigos autorizados: <code className="text-purple-400 font-mono">PRO-2026</code> o <code className="text-purple-400 font-mono">VIP-2026</code>
-                  </p>
-                )}
               </div>
 
               {/* Business Name Input */}
@@ -280,7 +268,7 @@ export default function OnboardingPage() {
                       setBusinessName(e.target.value);
                       setErrorMessage(null);
                     }}
-                    placeholder="Ej: Chifa Jumbo, Don Tito San Isidro, Café Bistro"
+                    placeholder="Ej: Pollos Don Tito, Chifa Jumbo, Café Bistro"
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border-2 border-blue-500 rounded-2xl text-white placeholder-slate-500 text-base focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/20 transition-all font-bold shadow-inner"
                   />
                 </div>
@@ -290,7 +278,7 @@ export default function OnboardingPage() {
                   <div className="mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
                     <div className="px-4 py-2 border-b border-slate-800 flex items-center gap-2 text-xs text-slate-400">
                       <Search className="w-3.5 h-3.5" />
-                      <span>Selecciona tu negocio para vincular el formulario directo de 5 estrellas:</span>
+                      <span>Coincidencias encontradas en Google Maps:</span>
                     </div>
                     {searchResults.map((place) => (
                       <button
@@ -329,40 +317,29 @@ export default function OnboardingPage() {
                   <div className="mt-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-300">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
                     <div>
-                      <span className="font-bold text-emerald-300">✅ Negocio encontrado en Google — Link directo a 5 estrellas activado</span>
-                      <span className="block text-[11px] text-slate-400 mt-0.5 truncate max-w-sm">{selectedPlace.formatted_address}</span>
-                      <button
-                        type="button"
-                        onClick={() => { setSelectedPlace(null); setHasSearched(false); }}
-                        className="text-[11px] text-blue-400 hover:text-blue-300 mt-1 underline"
-                      >
-                        ¿No es este? Cambiar selección
-                      </button>
+                      <span className="font-bold text-emerald-300">✅ Vinculación a Google Reviews Activada</span>
+                      <span className="block text-[11px] text-slate-400 mt-0.5 truncate max-w-sm">{selectedPlace.formatted_address || selectedPlace.name}</span>
+                      {searchResults.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedPlace(null); }}
+                          className="text-[11px] text-blue-400 hover:text-blue-300 mt-1 underline block"
+                        >
+                          Ver otras sucursales o ubicaciones
+                        </button>
+                      )}
                     </div>
                   </div>
-                ) : hasSearched && !isSearching ? (
-                  searchFallback ? (
-                    <div className="mt-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-300">
-                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold">Sin API Key de Google configurada</span>
-                        <span className="block text-[11px] text-slate-400 mt-0.5">
-                          El QR usará búsqueda general de Google Maps. Para link directo a reseñas, configura{" "}
-                          <code className="bg-slate-800 px-1 rounded">GOOGLE_PLACES_API_KEY</code> en Vercel.
-                        </span>
-                      </div>
+                ) : businessName.trim().length >= 2 ? (
+                  <div className="mt-3 p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-start gap-2.5 text-xs text-blue-300">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
+                    <div>
+                      <span className="font-bold">✨ Autovinculado como "{businessName.trim()}"</span>
+                      <span className="block text-[11px] text-slate-400 mt-0.5">
+                        El sistema resolverá automáticamente el enlace de 5 estrellas al activar.
+                      </span>
                     </div>
-                  ) : searchResults.length === 0 && businessName.trim().length >= 3 ? (
-                    <div className="mt-3 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-300">
-                      <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-red-300">⚠️ No se encontró este negocio en Google Maps</span>
-                        <span className="block text-[11px] text-slate-300 mt-0.5">
-                          Agrega el distrito o ciudad (ej: <strong>"{businessName.trim()} Miraflores"</strong>) o verifica que tu negocio esté creado en Google Business.
-                        </span>
-                      </div>
-                    </div>
-                  ) : null
+                  </div>
                 ) : null}
               </div>
 
@@ -467,11 +444,9 @@ export default function OnboardingPage() {
               <Star className="w-4 h-4 text-amber-400" />
               Vista Previa en Vivo del QR
             </h3>
-            {selectedPlace && (
-              <p className="text-[11px] text-emerald-400 font-semibold mb-3">
-                ⭐ Abre formulario de 5 estrellas directamente
-              </p>
-            )}
+            <p className="text-[11px] text-emerald-400 font-semibold mb-3">
+              ⭐ Abre formulario de 5 estrellas directamente
+            </p>
 
             <QrDisplay
               slug={slug}
