@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -62,10 +62,10 @@ export default function OnboardingPage() {
 
   const slug = generateSlug(businessName || "mi-negocio");
 
-  // The effective Google URL: use selected place, custom URL, or direct review URL
+  // The effective Google URL: use selected place, custom URL, or fallback search
   const effectiveGoogleUrl = selectedPlace
     ? selectedPlace.review_url
-    : customGoogleUrl.trim() || `https://search.google.com/local/writereview?placeid=${selectedPlace?.place_id || ""}` || createGoogleSearchUrl(businessName || "Mi Negocio");
+    : customGoogleUrl.trim() || createGoogleSearchUrl(businessName || "Mi Negocio");
 
   // Validate license key as user types
   useEffect(() => {
