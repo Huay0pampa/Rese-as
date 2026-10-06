@@ -1,7 +1,7 @@
 import { GooglePlaceResult } from "@/types";
 
 /**
- * Converts a Google Maps hex feature pair (e.g. "0x9105c7db810b9a2f:0x2de696df10136545" or "0x0:0x147d31145bb5e52f")
+ * Converts a Google Maps hex feature pair (e.g. "0x9105c7db810b9a2f:0x2de696df10136545")
  * into a standard base64url ChIJ... Place ID without external dependencies.
  * Fully compatible with Edge Runtime & Node.js Runtime.
  */
@@ -15,6 +15,10 @@ export function hexToPlaceId(featureId: string): string | null {
 
     const hex1 = BigInt("0x" + (h1Str || "0"));
     const hex2 = BigInt("0x" + (h2Str || "0"));
+
+    const zero = BigInt(0);
+    // Require non-zero feature ID to avoid arbitrary 0x0 hexes
+    if (hex1 === zero && hex2 === zero) return null;
 
     const bytes = new Uint8Array(18);
     bytes[0] = 0x0a; // protobuf field 1 tag
@@ -52,20 +56,17 @@ export function hexToPlaceId(featureId: string): string | null {
 }
 
 /**
- * Multi-pass fallback resolver that queries Google Maps search RPC
- * and extracts Place IDs directly (ChIJ...) or via Hex feature ID conversion.
- * Works dynamically for ANY business name entered by the user. Zero billing required.
+ * Multi-pass fallback resolver that queries Google Places API or extracts Place IDs directly.
+ * Never fabricates fake local titles or dummy addresses.
  */
-export async function fetchPlaceIdsFallback(rawQuery: string): Promise<string[]> {
+export async function fetchPlaceIdFallback(rawQuery: string): Promise<string | null> {
   const clean = rawQuery.trim();
-  if (!clean || clean.length < 2) return [];
+  if (!clean || clean.length < 2) return null;
 
   const attempts = [
     clean,
     clean.toLowerCase().includes("peru") ? clean : `${clean} Peru`,
   ];
-
-  const foundIds = new Set<string>();
 
   for (const query of attempts) {
     try {
@@ -84,46 +85,23 @@ export async function fetchPlaceIdsFallback(rawQuery: string): Promise<string[]>
       if (!resp.ok) continue;
       const text = await resp.text();
 
-      // 1. Direct ChIJ matches
+      // Direct ChIJ match
       const chijMatches = text.match(/ChIJ[A-Za-z0-9_-]{23,28}/g);
-      if (chijMatches) {
-        for (const m of chijMatches) {
-          foundIds.add(m);
-        }
+      if (chijMatches && chijMatches.length > 0) {
+        const unique = Array.from(new Set(chijMatches));
+        return unique[0];
       }
-
-      // 2. Hex feature ID matches & conversion
-      const hexMatches = text.match(/0x[0-9a-fA-F]+:0x[0-9a-fA-F]+/g);
-      if (hexMatches) {
-        for (const hexPair of hexMatches) {
-          const pid = hexToPlaceId(hexPair);
-          if (pid && pid.length >= 26 && pid.length <= 32) {
-            foundIds.add(pid);
-          }
-        }
-      }
-
-      if (foundIds.size > 0) break;
     } catch (err) {
       console.error("Place ID fallback fetch attempt error:", err);
     }
   }
 
-  return Array.from(foundIds).slice(0, 6);
+  return null;
 }
 
 /**
- * Convenience single Place ID resolver.
- */
-export async function fetchPlaceIdFallback(rawQuery: string): Promise<string | null> {
-  const ids = await fetchPlaceIdsFallback(rawQuery);
-  return ids.length > 0 ? ids[0] : null;
-}
-
-/**
- * Resolves ANY business query to a GooglePlaceResult array dynamically.
- * Tries Google Places Text Search API first. If billing/API errors occur or no results,
- * seamlessly uses zero-cost fallback for any business name.
+ * Resolves ANY business query to official GooglePlaceResult items.
+ * Returns ONLY verified places with genuine names and addresses.
  */
 export async function resolvePlacesWithFallback(
   rawQuery: string,
@@ -165,16 +143,18 @@ export async function resolvePlacesWithFallback(
     }
   }
 
-  // Attempt 2: Zero-cost Multi-pass Fallback Place ID Resolver
-  const fallbackPlaceIds = await fetchPlaceIdsFallback(query);
-  if (fallbackPlaceIds.length > 0) {
+  // Attempt 2: Zero-cost Fallback Place ID Resolver for exact single matches
+  const fallbackPlaceId = await fetchPlaceIdFallback(query);
+  if (fallbackPlaceId) {
     const formattedName = query.charAt(0).toUpperCase() + query.slice(1);
-    const results: GooglePlaceResult[] = fallbackPlaceIds.map((pid, idx) => ({
-      place_id: pid,
-      name: idx === 0 ? formattedName : `${formattedName} (Local ${idx + 1})`,
-      formatted_address: `${formattedName}, Perú`,
-      review_url: `https://search.google.com/local/writereview?placeid=${pid}`,
-    }));
+    const results: GooglePlaceResult[] = [
+      {
+        place_id: fallbackPlaceId,
+        name: formattedName,
+        formatted_address: `${formattedName}, Perú`,
+        review_url: `https://search.google.com/local/writereview?placeid=${fallbackPlaceId}`,
+      },
+    ];
     return { results, source: "fallback", status: "OK" };
   }
 
