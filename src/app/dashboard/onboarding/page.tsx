@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -29,6 +29,7 @@ import {
   KeyRound,
   ShieldCheck,
   ExternalLink,
+  HelpCircle,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -49,6 +50,7 @@ export default function OnboardingPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<GooglePlaceResult | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   // Advanced optional inputs (collapsed)
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -65,7 +67,11 @@ export default function OnboardingPage() {
 
   const slug = generateSlug(businessName || "mi-negocio");
 
-  // The effective Google URL: use selected place, custom URL, or auto Google Search
+  // A business is validated if a Google Place is selected OR a custom Google URL is provided
+  const hasValidCustomUrl = customGoogleUrl.trim().length > 10;
+  const isPlaceValidated = selectedPlace !== null || hasValidCustomUrl;
+
+  // The effective Google URL
   const effectiveGoogleUrl = selectedPlace
     ? selectedPlace.review_url
     : customGoogleUrl.trim() || createGoogleSearchUrl(businessName || "Mi Negocio");
@@ -85,6 +91,7 @@ export default function OnboardingPage() {
     if (name.trim().length < 2) {
       setSearchResults([]);
       setApiError(null);
+      setHasSearched(false);
       return;
     }
 
@@ -100,12 +107,14 @@ export default function OnboardingPage() {
       const data = await res.json();
       const items: GooglePlaceResult[] = data.results || [];
       setSearchResults(items);
+      setHasSearched(true);
 
       if (data.error || data.status === "REQUEST_DENIED") {
         setApiError(data.error || data.status || "ERROR");
       }
     } catch {
       setSearchResults([]);
+      setHasSearched(true);
     } finally {
       setIsSearching(false);
     }
@@ -134,6 +143,13 @@ export default function OnboardingPage() {
     const cleanName = businessName.trim();
     if (!cleanName) {
       setErrorMessage("Por favor escribe el nombre de tu negocio.");
+      return;
+    }
+
+    if (!isPlaceValidated) {
+      setErrorMessage(
+        "Debes seleccionar una ficha válida de Google Maps en la lista de coincidencias o ingresar tu enlace en Opciones Avanzadas."
+      );
       return;
     }
 
@@ -192,7 +208,7 @@ export default function OnboardingPage() {
             Generador de QR Dinámico — Link Directo a Google Reviews ⭐⭐⭐⭐⭐
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Ingresa tu código de licencia y el nombre de tu local para generar tu QR con vinculación directa a reseñas de 5 estrellas.
+            Ingresa tu código de licencia y busca tu ficha en Google Maps para generar tu QR directo de 5 estrellas.
           </p>
         </div>
       </div>
@@ -257,7 +273,7 @@ export default function OnboardingPage() {
               {/* Business Name Input */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
-                  2. Nombre de tu Negocio / Comercio
+                  2. Nombre de tu Negocio / Comercio (Búsqueda en Google Maps)
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-blue-400">
@@ -275,29 +291,36 @@ export default function OnboardingPage() {
                       setSelectedPlace(null);
                       setErrorMessage(null);
                     }}
-                    placeholder="Ej: Pollos Don Tito, Chifa Jumbo, Don Tito San Isidro"
+                    placeholder="Ej: Pollos Don Tito, Chifa Jumbo, Pardos Chicken San Isidro"
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border-2 border-blue-500 rounded-2xl text-white placeholder-slate-500 text-base focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/20 transition-all font-bold shadow-inner"
                   />
                 </div>
 
                 {/* Search Results Dropdown List */}
                 {searchResults.length > 0 && (
-                  <div className="mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl">
-                    <div className="px-4 py-2 border-b border-slate-800 flex items-center gap-2 text-xs text-slate-400">
-                      <Search className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Coincidencias encontradas en Google Maps (Haz clic en tu local):</span>
+                  <div className="mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in duration-200">
+                    <div className="px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                      <span className="flex items-center gap-1.5 font-bold text-blue-400">
+                        <Search className="w-3.5 h-3.5" />
+                        <span>Selecciona tu local de la lista de Google Maps:</span>
+                      </span>
+                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-md font-bold">
+                        {searchResults.length} {searchResults.length === 1 ? "coincidencia" : "coincidencias"}
+                      </span>
                     </div>
                     {searchResults.map((place) => (
                       <button
                         key={place.place_id}
                         type="button"
                         onClick={() => handleSelectPlace(place)}
-                        className={`w-full text-left px-4 py-3.5 border-b border-slate-800/50 last:border-0 transition-colors group cursor-pointer ${
-                          selectedPlace?.place_id === place.place_id ? "bg-blue-600/20 border-l-4 border-l-blue-500" : "hover:bg-slate-800"
+                        className={`w-full text-left px-4 py-3.5 border-b border-slate-800/50 last:border-0 transition-all group cursor-pointer ${
+                          selectedPlace?.place_id === place.place_id
+                            ? "bg-blue-600/30 border-l-4 border-l-blue-400"
+                            : "hover:bg-slate-800/80"
                         }`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="mt-0.5 w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                          <div className="mt-0.5 w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0 group-hover:bg-blue-500/30 transition-colors">
                             <MapPin className="w-4 h-4 text-blue-400" />
                           </div>
                           <div className="min-w-0">
@@ -321,49 +344,47 @@ export default function OnboardingPage() {
                   </div>
                 )}
 
-                {/* Selected Place Badge */}
+                {/* Status Badges */}
                 {selectedPlace ? (
                   <div className="mt-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-300">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-emerald-300">✅ Ficha de Google Maps Vinculada — Directo a 5 Estrellas</span>
+                    <div className="w-full">
+                      <span className="font-bold text-emerald-300">✅ Ficha Verificada de Google Maps Vinculada — Directo a 5 Estrellas</span>
                       <span className="block text-[11px] text-slate-300 mt-0.5 font-medium">{selectedPlace.name} &bull; {selectedPlace.formatted_address}</span>
                       <button
                         type="button"
                         onClick={() => { setSelectedPlace(null); runSearch(businessName); }}
-                        className="text-[11px] text-blue-400 hover:text-blue-300 mt-1 underline block"
+                        className="text-[11px] text-blue-400 hover:text-blue-300 mt-1 underline block font-semibold"
                       >
                         Cambiar local o sucursal seleccionada
                       </button>
                     </div>
                   </div>
-                ) : businessName.trim().length >= 2 ? (
-                  <div className="mt-3 p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 space-y-1 text-xs text-blue-300">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
-                      <span className="font-bold">✨ Autovinculado como "{businessName.trim()}"</span>
+                ) : hasValidCustomUrl ? (
+                  <div className="mt-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-300">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-emerald-300">✅ Enlace Personalizado Configurado</span>
+                      <span className="block text-[11px] text-slate-300 mt-0.5 font-mono truncate">{customGoogleUrl}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400 pl-6">
-                      El QR dirigirá automáticamente al formulario de 5 estrellas al escanear.
-                    </p>
-
-                    {apiError && (apiError.includes("Billing") || apiError.includes("REQUEST_DENIED")) && (
-                      <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                        <div>
-                          <span className="font-bold">💡 Tip de Google Cloud:</span> Para activar el buscador en vivo con sucursales, vincula una tarjeta en Google Cloud:
-                          <a
-                            href="https://console.cloud.google.com/project/_/billing/enable"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-amber-200 underline font-bold ml-1 inline-flex items-center gap-1"
-                          >
-                            Habilitar Facturación Gratis ($200 USD/mes regalo) <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      </div>
-                    )}
                   </div>
+                ) : businessName.trim().length >= 2 && !isSearching ? (
+                  searchResults.length === 0 && hasSearched ? (
+                    <div className="mt-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1.5 text-xs text-amber-300">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="font-bold">⚠️ No se encontró una ficha registrada en Google Maps para "{businessName.trim()}"</span>
+                      </div>
+                      <p className="text-[11px] text-amber-200/80 pl-6">
+                        Verifica que el nombre comercial coincida exactamente con tu ficha de Google Maps, o despliega <strong>"Opciones avanzadas"</strong> para pegar tu enlace directo.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center gap-2 text-xs text-blue-300">
+                      <Search className="w-4 h-4 text-blue-400 shrink-0 animate-pulse" />
+                      <span>Buscando coincidencias en Google Maps... Haz clic en tu local en la lista arriba para seleccionarlo.</span>
+                    </div>
+                  )
                 ) : null}
               </div>
 
@@ -375,8 +396,8 @@ export default function OnboardingPage() {
                   className="w-full flex items-center justify-between text-xs font-bold text-slate-400 hover:text-white transition-colors"
                 >
                   <span className="flex items-center gap-2">
-                    <Globe className="w-3.5 h-3.5" />
-                    <span>Opciones avanzadas (Enlace manual / WhatsApp)</span>
+                    <Globe className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Opciones avanzadas (Enlace manual de Google / WhatsApp / Instagram)</span>
                   </span>
                   {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
@@ -385,15 +406,18 @@ export default function OnboardingPage() {
                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-4 animate-in fade-in">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Enlace manual de Google Reviews (Opcional)
+                        Enlace manual directo de Google Reviews (Opcional)
                       </label>
                       <input
                         type="text"
                         value={customGoogleUrl}
                         onChange={(e) => setCustomGoogleUrl(e.target.value)}
-                        placeholder="https://g.page/r/.../review (Para anular la búsqueda automática)"
+                        placeholder="https://g.page/r/.../review o https://search.google.com/local/writereview?placeid=..."
                         className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
                       />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Si ya tienes tu link directo de 5 estrellas, pégalo aquí para validar tu negocio inmediatamente.
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -448,11 +472,13 @@ export default function OnboardingPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={isSaving || !businessName.trim() || !licenseKey.trim()}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-black text-base shadow-xl shadow-purple-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isSaving || !businessName.trim() || !licenseKey.trim() || !isPlaceValidated}
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-base shadow-xl shadow-purple-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isSaving ? (
                   <><Loader2 className="w-5 h-5 animate-spin" /><span>Verificando Licencia y Activando...</span></>
+                ) : !isPlaceValidated && businessName.trim().length >= 2 ? (
+                  <><HelpCircle className="w-5 h-5 text-amber-300" /><span>Selecciona tu local en la lista arriba para activar</span></>
                 ) : (
                   <><Sparkles className="w-5 h-5 text-amber-300" /><span>Validar Licencia y Activar QR 🚀</span><ArrowRight className="w-5 h-5 ml-1" /></>
                 )}
@@ -492,7 +518,7 @@ export default function OnboardingPage() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full text-center text-xs text-slate-500 pt-6 pb-2">
-        SaaS B2B de Reseñas &bull; Motor de Licencias y QR Dinámico con Google Places API
+        SaaS B2B de Reseñas &bull; Motor de Licencias y QR Dinámico con Validación Estricta Google Maps
       </footer>
     </main>
   );
