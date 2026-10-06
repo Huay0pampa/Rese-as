@@ -1,7 +1,7 @@
 import { GooglePlaceResult } from "@/types";
 
 /**
- * Converts a Google Maps hex feature pair (e.g. "0x9105c7db810b9a2f:0x2de696df10136545")
+ * Converts a Google Maps hex feature pair (e.g. "0x9105c7db810b9a2f:0x2de696df10136545" or "0x0:0x147d31145bb5e52f")
  * into a standard base64url ChIJ... Place ID without external dependencies.
  * Fully compatible with Edge Runtime & Node.js Runtime.
  */
@@ -13,8 +13,8 @@ export function hexToPlaceId(featureId: string): string | null {
     const h1Str = parts[0].replace(/^0x/i, "");
     const h2Str = parts[1].replace(/^0x/i, "");
 
-    const hex1 = BigInt("0x" + h1Str);
-    const hex2 = BigInt("0x" + h2Str);
+    const hex1 = BigInt("0x" + (h1Str || "0"));
+    const hex2 = BigInt("0x" + (h2Str || "0"));
 
     const bytes = new Uint8Array(18);
     bytes[0] = 0x0a; // protobuf field 1 tag
@@ -56,14 +56,16 @@ export function hexToPlaceId(featureId: string): string | null {
  * and extracts Place IDs directly (ChIJ...) or via Hex feature ID conversion.
  * Works dynamically for ANY business name entered by the user. Zero billing required.
  */
-export async function fetchPlaceIdFallback(rawQuery: string): Promise<string | null> {
+export async function fetchPlaceIdsFallback(rawQuery: string): Promise<string[]> {
   const clean = rawQuery.trim();
-  if (!clean || clean.length < 2) return null;
+  if (!clean || clean.length < 2) return [];
 
   const attempts = [
     clean,
     clean.toLowerCase().includes("peru") ? clean : `${clean} Peru`,
   ];
+
+  const foundIds = new Set<string>();
 
   for (const query of attempts) {
     try {
@@ -82,29 +84,40 @@ export async function fetchPlaceIdFallback(rawQuery: string): Promise<string | n
       if (!resp.ok) continue;
       const text = await resp.text();
 
-      // 1. Direct ChIJ match
-      const chijMatches = text.match(/ChIJ[A-Za-z0-9_-]{23}/g);
-      if (chijMatches && chijMatches.length > 0) {
-        const unique = Array.from(new Set(chijMatches));
-        return unique[0];
+      // 1. Direct ChIJ matches
+      const chijMatches = text.match(/ChIJ[A-Za-z0-9_-]{23,28}/g);
+      if (chijMatches) {
+        for (const m of chijMatches) {
+          foundIds.add(m);
+        }
       }
 
-      // 2. Hex feature ID match & convert
+      // 2. Hex feature ID matches & conversion
       const hexMatches = text.match(/0x[0-9a-fA-F]+:0x[0-9a-fA-F]+/g);
-      if (hexMatches && hexMatches.length > 0) {
+      if (hexMatches) {
         for (const hexPair of hexMatches) {
-          const placeId = hexToPlaceId(hexPair);
-          if (placeId && placeId.length === 27) {
-            return placeId;
+          const pid = hexToPlaceId(hexPair);
+          if (pid && pid.length >= 26 && pid.length <= 32) {
+            foundIds.add(pid);
           }
         }
       }
+
+      if (foundIds.size > 0) break;
     } catch (err) {
       console.error("Place ID fallback fetch attempt error:", err);
     }
   }
 
-  return null;
+  return Array.from(foundIds).slice(0, 6);
+}
+
+/**
+ * Convenience single Place ID resolver.
+ */
+export async function fetchPlaceIdFallback(rawQuery: string): Promise<string | null> {
+  const ids = await fetchPlaceIdsFallback(rawQuery);
+  return ids.length > 0 ? ids[0] : null;
 }
 
 /**
@@ -153,17 +166,15 @@ export async function resolvePlacesWithFallback(
   }
 
   // Attempt 2: Zero-cost Multi-pass Fallback Place ID Resolver
-  const fallbackPlaceId = await fetchPlaceIdFallback(query);
-  if (fallbackPlaceId) {
+  const fallbackPlaceIds = await fetchPlaceIdsFallback(query);
+  if (fallbackPlaceIds.length > 0) {
     const formattedName = query.charAt(0).toUpperCase() + query.slice(1);
-    const results: GooglePlaceResult[] = [
-      {
-        place_id: fallbackPlaceId,
-        name: formattedName,
-        formatted_address: `${formattedName}, Perú`,
-        review_url: `https://search.google.com/local/writereview?placeid=${fallbackPlaceId}`,
-      },
-    ];
+    const results: GooglePlaceResult[] = fallbackPlaceIds.map((pid, idx) => ({
+      place_id: pid,
+      name: idx === 0 ? formattedName : `${formattedName} (Local ${idx + 1})`,
+      formatted_address: `${formattedName}, Perú`,
+      review_url: `https://search.google.com/local/writereview?placeid=${pid}`,
+    }));
     return { results, source: "fallback", status: "OK" };
   }
 
